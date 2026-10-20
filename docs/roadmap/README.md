@@ -1,17 +1,20 @@
 # Implementation phases and exit criteria
 
-## Phase 1 — modular monolith (first priority)
+## Phase 1 — modular monolith (nearing exit)
 
-Catalog, Inventory, Ordering share one host but enforce logical module boundaries. PostgreSQL authoritative. Hold/confirm/reclaim code and real-Postgres race tests.
+Catalog, Inventory and Ordering are now separate assemblies in one ASP.NET Core host. PostgreSQL remains authoritative, with one shared EF Core DbContext and atomic checkout transaction. **Not yet independent microservices.**
 
-- [x] Draft project structure, basic endpoints, schema, Docker Compose and concurrency test source **(unverified: no build runtime available)**
-- [ ] Run restore/build/tests on local SDK and fix any defects
-- [ ] Complete EF migrations and migration job (replace bootstrap DDL)
-- [ ] Add concurrent multi-seat and expiry/reclaim tests
-- [ ] Define ownership and document payment-less demo checkout semantics
-- [ ] Add bounded request validation, error codes and structured logging
+- [x] Solution, working API, PostgreSQL migrations, Docker migration job
+- [x] Catalog and Inventory extracted from API / Infrastructure
+- [x] Ordering owns checkout idempotency; Inventory owns seat transitions
+- [x] Multi-seat concurrency, expiry/reclaim, and checkout rollback tests reported passing
+- [x] Developer verified build and all 24 existing tests on October 20, 2026
+- [x] Developer verified all 24 tests, including original HTTP API contract tests
+- [ ] Validate expiry projection and directly followable hold/order Location URLs (26 tests expected)
+- [ ] Run Compose smoke and document the final Phase 1 test evidence (docs/phase1-completion.md)
+- [ ] Optional local-demo hardening: bounded HTTP payloads, structured logging, readiness endpoint
 
-**Exit:** demonstrated **0 double-sold seats** under a reproducible real-PostgreSQL contention test; no claims before this passes.
+**Exit:** the HTTP workflow and existing real-PostgreSQL concurrency suite pass without double-sold seats. Do not represent this as proof of production-scale load, independent deployment, payment reliability, or authentication.
 
 ## Phase 2 — extract microservices
 

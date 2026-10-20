@@ -19,12 +19,38 @@ public sealed class InventoryService(BookingDbContext db, TimeProvider clock) : 
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(10);
 
     public async Task<IReadOnlyList<SeatSummary>> ListSeatsAsync(
-        Guid eventId, CancellationToken ct) =>
-        await db.Seats.AsNoTracking()
+        Guid eventId, CancellationToken ct)
+    {
+        // Capture time once for the entire query. Expired holds are logically
+        // available even before another buyer reclaims their persisted rows.
+        var now = clock.GetUtcNow();
+        return await db.Seats.AsNoTracking()
             .Where(x => x.EventId == eventId)
             .OrderBy(x => x.SeatCode)
-            .Select(x => new SeatSummary(x.SeatCode, x.Status, x.HeldUntilUtc))
+            .Select(x => new SeatSummary(
+                x.SeatCode,
+                x.Status == SeatStatus.Held && x.HeldUntilUtc <= now
+                    ? SeatStatus.Available
+                    : x.Status,
+                x.Status == SeatStatus.Held && x.HeldUntilUtc <= now
+                    ? null
+                    : x.HeldUntilUtc))
             .ToArrayAsync(ct);
+    }
+
+    public async Task<HoldView?> GetHoldAsync(
+        Guid holdId, Guid buyerId, CancellationToken ct)
+    {
+        if (holdId == Guid.Empty || buyerId == Guid.Empty)
+            return null;
+
+        var hold = await db.Holds.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Id == holdId && x.BuyerId == buyerId, ct);
+        if (hold is null)
+            return null;
+
+        return ToCurrentView(hold);
+    }
 
     public async Task<OperationResult<HoldView>> HoldAsync(
         Guid eventId, Guid buyerId, string? idempotencyKey, string[]? requestedCodes,
@@ -235,10 +261,20 @@ public sealed class InventoryService(BookingDbContext db, TimeProvider clock) : 
         return new(CheckoutPreparationStatus.Ready, now);
     }
 
-    private static OperationResult<HoldView> ReplayedHold(SeatHold hold, string fingerprint) =>
+    // Return the logical (time-sensitive) hold status consistently from both
+    // the GET resource endpoint and the idempotent POST replay endpoint.
+    private OperationResult<HoldView> ReplayedHold(SeatHold hold, string fingerprint) =>
         hold.RequestFingerprint == fingerprint
-            ? new(ResultKind.Replayed, ToView(hold))
+            ? new(ResultKind.Replayed, ToCurrentView(hold))
             : new(ResultKind.Conflict, Error: "Idempotency key reused with different seats/event.");
+
+    private HoldView ToCurrentView(SeatHold hold)
+    {
+        var view = ToView(hold);
+        return hold.Status == HoldStatus.Active && hold.ExpiresAtUtc <= clock.GetUtcNow()
+            ? view with { Status = "Expired" }
+            : view;
+    }
 
     private static HoldView ToView(SeatHold hold) => new(hold.Id, hold.EventId, hold.BuyerId,
         hold.SeatCodesCsv.Split(','), hold.ExpiresAtUtc, hold.Status.ToString());

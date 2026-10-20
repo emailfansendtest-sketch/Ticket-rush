@@ -1,27 +1,42 @@
-# Validation checklist — not yet executed
+# Phase 1 validation checklist
 
-**Known limitation of this generated starter:** neither the .NET SDK nor Docker is installed in the artifact authoring environment. Source, packages and API wiring have NOT been built or executed. The user should use the commands below on a development PC before interpreting tests as verified.
+**Developer-verified baseline (October 20, 2026):** Catalog, Inventory and Ordering modules build in Visual Studio 2026, and all **24** tests (including initial HTTP tests) passed. This completion patch adds two expiry tests and updates HTTP Location verification; the developer has **not yet confirmed** the new code passes locally.
+
+## Run this patch
 
 ```powershell
-dotnet --version
-docker version
 dotnet restore .\TicketRush.slnx
 dotnet build .\TicketRush.slnx -c Release
 dotnet test .\TicketRush.slnx -c Release --no-build
 docker compose up --build
 ```
 
-**Critical before a public portfolio demo:** add EF migrations, replace exposed `buyerId` with Keycloak claims, add buyer authorization/tenant boundaries, validate request payload size, review race tests under contention, and record actual execution output. Review the compiler diagnostics of `FromSqlInterpolated` and `xmin` if provider versions change.
+**Expected:** 26 tests if the two new expiry tests pass. The API tests use PostgreSQL Testcontainers and ASP.NET Core TestServer. The `Microsoft.AspNetCore.Mvc.Testing` package remains centrally pinned to `10.0.13`. Run `scripts/Verify-Phase1-Docker.ps1` after Compose starts and see `docs/phase1-completion.md`.
 
-Test matrix to implement before Phase 1 can be considered finished:
+## Verified by the previously passing service/database tests
 
-- [ ] Competing buyers for a single seat (one success)
-- [ ] 1,000 checkout attempts for 100 seats (100 orders, zero duplicates)
-- [ ] Two buyers each request overlapping 3-seat sets (all-or-none)
-- [ ] Concurrent duplicate holds with identical idempotency keys
-- [ ] Concurrent checkout of same hold under different keys
-- [ ] Expired hold reclaimed while an old checkout races
-- [ ] Crash/rollback before transaction commit produces no partial sale
-- [ ] Event exists but some requested seats do not (404, no partial mutation)
-- [ ] Container start, reset and schema ownership remain deterministic
-- [ ] Memory snapshot and load baseline established for later phases
+- [x] Competition for seats, including 1,000 hold attempts on 100 seats
+- [x] Multi-seat requests are all-or-nothing
+- [x] Same-buyer and different-buyer idempotency-key semantics
+- [x] Concurrent duplicate checkout cannot duplicate orders
+- [x] An expired hold can be reclaimed and cannot later be confirmed by its former buyer
+- [x] Different holds racing on one checkout key leave the loser unmodified
+- [x] Inventory checkout preparation remains inside Ordering's transaction
+- [x] EF migrations and demo seed initialization work in Testcontainers
+
+## HTTP tests (two previously verified; expiry and Location corrections pending)
+
+- [x] `GET /events`, `GET /events/{id}/seats`, `POST /events/{id}/holds`, `POST /orders`, `GET /health/live` respond as expected
+- [x] HTTP `201` versus `200` idempotent replays, `409` seat conflict, `400` invalid request, `404` missing seat
+- [x] HTTP checkout persists one order and final seat state in PostgreSQL
+- [ ] Location headers resolve to hold/order GET endpoints, with buyer filtering and 400/404 handling
+- [ ] Expired held seats are read as Available without modifying persisted seat rows
+
+## Remaining limitations and next phase
+
+- Buyer IDs are supplied by the caller: **do not expose this demo API publicly**. Compose binds the API and PostgreSQL host ports to `127.0.0.1` only. Authentication/authorization is Phase 2.
+- Expired-hold POST replays and GET resource reads now both report logical `Expired` status, even after the seat is reclaimed.
+- Payments, RabbitMQ, inbox/outbox, sagas and per-service persistence are **not** part of Phase 1.
+- Current modules share one EF Core DbContext and transaction. This is intentional and must not be mistaken for isolation between separately deployed services.
+- No claims about throughput, p95/p99, memory allocation, or three-replica scale-out until measured in Phases 3–4.
+- A request-size policy, structured operational logging, and readiness checks remain worthwhile follow-up hardening; do not infer their existence from the passing tests.

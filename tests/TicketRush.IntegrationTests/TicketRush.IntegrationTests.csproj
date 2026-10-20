@@ -2,12 +2,14 @@
   <PropertyGroup><IsTestProject>true</IsTestProject><IsPackable>false</IsPackable></PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Testcontainers.PostgreSql" />
+    <ProjectReference Include="../../src/TicketRush.Api/TicketRush.Api.csproj" />
     <ProjectReference Include="../../src/TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
     <ProjectReference Include="../../src/TicketRush.Catalog/TicketRush.Catalog.csproj" />
     <ProjectReference Include="../../src/TicketRush.Inventory/TicketRush.Inventory.csproj" />

@@ -14,6 +14,17 @@ namespace TicketRush.Ordering;
 public sealed class OrderingService(
     BookingDbContext db, IInventoryCheckout inventory) : IOrderingService
 {
+    public async Task<OrderView?> GetOrderAsync(
+        Guid orderId, Guid buyerId, CancellationToken ct)
+    {
+        if (orderId == Guid.Empty || buyerId == Guid.Empty)
+            return null;
+
+        var order = await db.Orders.AsNoTracking().SingleOrDefaultAsync(
+            x => x.Id == orderId && x.BuyerId == buyerId, ct);
+        return order is null ? null : ToView(order);
+    }
+
     public async Task<OperationResult<OrderView>> ConfirmAsync(
         Guid holdId, Guid buyerId, string? idempotencyKey, CancellationToken ct)
     {
