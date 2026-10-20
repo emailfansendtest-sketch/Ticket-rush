@@ -5,6 +5,7 @@ using Testcontainers.PostgreSql;
 using TicketRush.Domain;
 using TicketRush.Infrastructure;
 using TicketRush.Inventory;
+using TicketRush.Ordering;
 using TicketRush.IntegrationTests.Utilities;
 using Xunit;
 
@@ -59,7 +60,7 @@ public sealed class BookingConcurrencyTests
         {
             await using var db = new BookingDbContext(options);
 
-            var service = new BookingService(db, TimeProvider.System);
+            var service = new OrderingService(db, new InventoryService(db, TimeProvider.System));
 
             return await service.ConfirmAsync(hold.Id, hold.BuyerId,
                 $"checkout-{index}", CancellationToken.None);
@@ -204,8 +205,8 @@ public sealed class BookingConcurrencyTests
                             await using var db =
                                 new BookingDbContext( options );
 
-                            var booking = new BookingService(
-                                db, TimeProvider.System );
+                            var booking = new OrderingService(
+                                db, new InventoryService(db, TimeProvider.System) );
 
                             return await booking.ConfirmAsync(
                                 hold.Id,
@@ -329,7 +330,7 @@ public sealed class BookingConcurrencyTests
 
         using var db2 = new BookingDbContext( options );
 
-        firstBuyerConfirmationTask = new BookingService( db2, timeProviderMock ).ConfirmAsync( 
+        firstBuyerConfirmationTask = new OrderingService( db2, new InventoryService(db2, timeProviderMock) ).ConfirmAsync( 
             firstBuyerHold.Value!.Id, 
             firstBuyerHold.Value.BuyerId,
             $"first-buyer-checkout", 
@@ -377,7 +378,7 @@ public sealed class BookingConcurrencyTests
 
         using var db4 = new BookingDbContext( options );
 
-        secondBuyerOrder = await new BookingService( db4, timeProviderMock ).ConfirmAsync(
+        secondBuyerOrder = await new OrderingService( db4, new InventoryService(db4, timeProviderMock) ).ConfirmAsync(
             secondBuyerHold.Value.Id,
             secondBuyer,
             "second-buyer-checkout",
@@ -438,8 +439,8 @@ public sealed class BookingConcurrencyTests
         {
             await start.Task;
 
-            var service = new BookingService(
-                db, TimeProvider.System );
+            var service = new OrderingService(
+                db, new InventoryService(db, TimeProvider.System) );
 
             return await service.ConfirmAsync(
                 hold.Value.Id,

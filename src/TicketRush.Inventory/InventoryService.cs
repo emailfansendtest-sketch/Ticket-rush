@@ -14,7 +14,7 @@ namespace TicketRush.Inventory;
 /// Owns seat availability and atomic hold creation. Uses PostgreSQL transactions,
 /// deterministic row locks, and persisted idempotency keys, not process-local state.
 /// </summary>
-public sealed class InventoryService(BookingDbContext db, TimeProvider clock) : IInventoryService
+public sealed class InventoryService(BookingDbContext db, TimeProvider clock) : IInventoryService, IInventoryCheckout
 {
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(10);
 
@@ -167,6 +167,72 @@ public sealed class InventoryService(BookingDbContext db, TimeProvider clock) : 
             await tx.RollbackAsync(ct);
             return new(ResultKind.Conflict, Error: "Seat updated concurrently; retry.");
         }
+    }
+
+
+    /// <summary>
+    /// Prepare a seat sale within the caller-owned checkout transaction.
+    /// This method MUST NOT SaveChanges, start a transaction, or commit: Ordering
+    /// inserts the corresponding order and saves everything in one EF unit of work.
+    /// </summary>
+    public async Task<CheckoutPreparation> PrepareCheckoutAsync(
+        Guid holdId, Guid buyerId, Guid orderId, CancellationToken ct)
+    {
+        if (db.Database.CurrentTransaction is null)
+        {
+            throw new InvalidOperationException(
+                "Inventory checkout requires an existing database transaction.");
+        }
+
+        // Preserve the same lock ordering as the original BookingService.ConfirmAsync.
+        var holdSchema = db.GetEntitySchema<SeatHold>();
+        string lockHoldSql = $$"""
+            SELECT {{holdSchema.Columns}}
+            FROM {{holdSchema.Table}}
+            WHERE {{holdSchema.Column(x => x.Id)}} = {0} FOR UPDATE
+            """;
+        var holds = await db.Holds.FromSqlRaw(lockHoldSql, holdId).ToListAsync(ct);
+
+        SeatHold? hold = holds.SingleOrDefault();
+        if (hold is null || hold.BuyerId != buyerId)
+        {
+            return new(CheckoutPreparationStatus.NotFound);
+        }
+
+        if (hold.Status != HoldStatus.Active)
+        {
+            return new(hold.Status == HoldStatus.Confirmed
+                ? CheckoutPreparationStatus.AlreadyConfirmed
+                : CheckoutPreparationStatus.AlreadyCheckedOut);
+        }
+
+        var seatSchema = db.GetEntitySchema<SeatAllocation>();
+        string lockHoldSeatsSql = $$"""
+            SELECT {{seatSchema.Columns}}
+            FROM {{seatSchema.Table}}
+            WHERE {{seatSchema.Column(x => x.HoldId)}} = {0}
+            ORDER BY {{seatSchema.Column(x => x.SeatCode)}} FOR UPDATE
+            """;
+        var seats = await db.Seats.FromSqlRaw(lockHoldSeatsSql, holdId).ToListAsync(ct);
+
+        // Obtain the time only AFTER acquiring the locks. A checkout waiting on a
+        // row lock must not succeed using a timestamp captured before the wait.
+        var now = clock.GetUtcNow();
+        if (now >= hold.ExpiresAtUtc || seats.Count != hold.SeatCount ||
+            seats.Any(s => s.Status != SeatStatus.Held || s.HeldUntilUtc <= now))
+        {
+            return new(CheckoutPreparationStatus.Expired);
+        }
+
+        foreach (var seat in seats)
+        {
+            seat.Status = SeatStatus.Sold;
+            seat.SoldOrderId = orderId;
+            seat.HeldUntilUtc = null;
+        }
+
+        hold.Status = HoldStatus.Confirmed;
+        return new(CheckoutPreparationStatus.Ready, now);
     }
 
     private static OperationResult<HoldView> ReplayedHold(SeatHold hold, string fingerprint) =>

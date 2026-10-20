@@ -3,14 +3,19 @@ using TicketRush.Api.Endpoints;
 using TicketRush.Catalog;
 using TicketRush.Infrastructure;
 using TicketRush.Inventory;
+using TicketRush.Ordering;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDb")
         ?? throw new InvalidOperationException("BookingDb connection string is missing.")));
-builder.Services.AddScoped<BookingService>();
+
 builder.Services.AddScoped<IEventCatalog, EfEventCatalog>();
-builder.Services.AddScoped<IInventoryService, InventoryService>();
+// Two Inventory ports resolve to ONE scoped instance and shared EF context.
+builder.Services.AddScoped<InventoryService>();
+builder.Services.AddScoped<IInventoryService>(sp => sp.GetRequiredService<InventoryService>());
+builder.Services.AddScoped<IInventoryCheckout>(sp => sp.GetRequiredService<InventoryService>());
+builder.Services.AddScoped<IOrderingService, OrderingService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHealthChecks();
 
@@ -19,18 +24,9 @@ app.MapHealthChecks("/health/live");
 
 app.MapCatalogEndpoints();
 app.MapInventoryEndpoints();
-
-app.MapPost("/orders", async (ConfirmOrderRequest request,
-    BookingService booking, CancellationToken ct) =>
-{
-    var result = await booking.ConfirmAsync(request.HoldId, request.BuyerId,
-        request.IdempotencyKey, ct);
-    return BookingResultMapper.MapResult(result, v => $"/orders/{v.Id}");
-});
+app.MapOrderingEndpoints();
 
 app.Run();
-
-public sealed record ConfirmOrderRequest(Guid HoldId, Guid BuyerId, string IdempotencyKey);
 
 // Phase 1 deliberately has no authentication or payment integration.
 // Never deploy publicly until Keycloak and authorization are implemented.
