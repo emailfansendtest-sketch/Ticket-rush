@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Deliberately no PackageReference or ProjectReference: contracts must not
+       depend on EF entities, transport libraries or application modules. -->
+</Project>

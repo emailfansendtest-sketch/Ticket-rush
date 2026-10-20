@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/TicketRush.Domain/TicketRush.Domain.csproj" />
+  <Project Path="src/TicketRush.BuildingBlocks.Contracts/TicketRush.BuildingBlocks.Contracts.csproj" />
   <Project Path="src/TicketRush.Catalog/TicketRush.Catalog.csproj" />
   <Project Path="src/TicketRush.Inventory/TicketRush.Inventory.csproj" />
   <Project Path="src/TicketRush.Ordering/TicketRush.Ordering.csproj" />

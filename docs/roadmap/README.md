@@ -1,6 +1,6 @@
 # Implementation phases and exit criteria
 
-## Phase 1 — modular monolith (nearing exit)
+## Phase 1 — modular monolith (26 tests reported passing; Docker smoke not yet confirmed)
 
 Catalog, Inventory and Ordering are now separate assemblies in one ASP.NET Core host. PostgreSQL remains authoritative, with one shared EF Core DbContext and atomic checkout transaction. **Not yet independent microservices.**
 
@@ -8,9 +8,7 @@ Catalog, Inventory and Ordering are now separate assemblies in one ASP.NET Core 
 - [x] Catalog and Inventory extracted from API / Infrastructure
 - [x] Ordering owns checkout idempotency; Inventory owns seat transitions
 - [x] Multi-seat concurrency, expiry/reclaim, and checkout rollback tests reported passing
-- [x] Developer verified build and all 24 existing tests on October 20, 2026
-- [x] Developer verified all 24 tests, including original HTTP API contract tests
-- [ ] Validate expiry projection and directly followable hold/order Location URLs (26 tests expected)
+- [x] Developer verified build and 26 integration tests on October 20, 2026, including expiry/HTTP fixes
 - [ ] Run Compose smoke and document the final Phase 1 test evidence (docs/phase1-completion.md)
 - [ ] Optional local-demo hardening: bounded HTTP payloads, structured logging, readiness endpoint
 
