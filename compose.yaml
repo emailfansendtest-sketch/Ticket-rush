@@ -14,7 +14,17 @@ services:
       retries: 15
     volumes:
       - ticket_pg:/var/lib/postgresql/data
-      - ./deploy/postgres/001_schema.sql:/docker-entrypoint-initdb.d/001_schema.sql:ro
+  migrate:
+    build:
+      context: .
+      dockerfile: src/TicketRush.DbMigrator/Dockerfile
+    environment:
+      ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly
+      SEED_DEMO_DATA: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
   api:
     build:
       context: .
@@ -25,7 +35,7 @@ services:
     ports:
       - "8088:8080"
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 volumes:
   ticket_pg:

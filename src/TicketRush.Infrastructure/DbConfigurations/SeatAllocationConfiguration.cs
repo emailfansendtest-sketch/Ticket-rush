@@ -10,7 +10,8 @@ namespace TicketRush.Infrastructure.DbConfigurations
         /// <inheritdoc />
         public void Configure( EntityTypeBuilder<SeatAllocation> builder )
         {
-            builder.ToTable( "seats" );
+            builder.ToTable( "seats", table =>
+                table.HasCheckConstraint( "CK_seats_status", "status IN (0,1,2)" ) );
 
             builder
                 .HasKey( x => new { x.EventId, x.SeatCode } );
@@ -46,7 +47,13 @@ namespace TicketRush.Infrastructure.DbConfigurations
                 .IsRowVersion();
 
             builder
-                .HasIndex( x => x.HoldId );
+                .HasIndex( x => x.HoldId )
+                .HasDatabaseName( "ix_seats_hold_id" );
+
+            builder.HasOne<TicketEvent>()
+                .WithMany()
+                .HasForeignKey( x => x.EventId )
+                .OnDelete( DeleteBehavior.NoAction );
         }
     }
 }

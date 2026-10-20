@@ -42,6 +42,11 @@ namespace TicketRush.Infrastructure.DbConfigurations
             builder
                 .HasIndex( x => new { x.BuyerId, x.IdempotencyKey } )
                 .IsUnique();
+
+            builder.HasOne<SeatHold>()
+                .WithMany()
+                .HasForeignKey( x => x.HoldId )
+                .OnDelete( DeleteBehavior.NoAction );
         }
     }
 }

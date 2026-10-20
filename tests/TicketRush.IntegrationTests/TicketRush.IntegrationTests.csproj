@@ -9,6 +9,5 @@
     </PackageReference>
     <PackageReference Include="Testcontainers.PostgreSql" />
     <ProjectReference Include="../../src/TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
-    <None Include="../../deploy/postgres/001_schema.sql" Link="001_schema.sql" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
