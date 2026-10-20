@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Testcontainers.PostgreSql;
 using TicketRush.Domain;
 using TicketRush.Infrastructure;
+using TicketRush.Inventory;
 using TicketRush.IntegrationTests.Utilities;
 using Xunit;
 
@@ -36,7 +37,7 @@ public sealed class BookingConcurrencyTests
             {
                 await using var db = new BookingDbContext(options);
 
-                var service = new BookingService(db, TimeProvider.System);
+                var service = new InventoryService(db, TimeProvider.System);
 
                 Guid buyer = Guid.NewGuid();
 
@@ -163,7 +164,7 @@ public sealed class BookingConcurrencyTests
                         Guid buyerId = Guid.NewGuid();
 
                         await using var db = new BookingDbContext( options );
-                        var booking = new BookingService(
+                        var booking = new InventoryService(
                             db, TimeProvider.System );
 
                         return await booking.HoldAsync(
@@ -312,7 +313,7 @@ public sealed class BookingConcurrencyTests
 
         using var db1 = new BookingDbContext( options );
 
-        firstBuyerHold = await new BookingService( db1, timeProviderMock ).HoldAsync(
+        firstBuyerHold = await new InventoryService( db1, timeProviderMock ).HoldAsync(
             DemoEvent, 
             firstBuyer, 
             "first-buyer-hold", 
@@ -340,7 +341,7 @@ public sealed class BookingConcurrencyTests
 
         using var db3 = new BookingDbContext( options );
 
-        secondBuyerHoldTask = new BookingService( db3, timeProviderMock ).HoldAsync( 
+        secondBuyerHoldTask = new InventoryService( db3, timeProviderMock ).HoldAsync( 
             DemoEvent, 
             secondBuyer, 
             "second-buyer-hold", 
@@ -422,7 +423,7 @@ public sealed class BookingConcurrencyTests
 
         await using var db1 = new BookingDbContext( options );
 
-        var hold = await new BookingService( db1, TimeProvider.System )
+        var hold = await new InventoryService( db1, TimeProvider.System )
             .HoldAsync( DemoEvent, buyer, "same-command", [ "A-001" ], CancellationToken.None );
 
         Assert.Equal( ResultKind.Created, hold.Kind );
@@ -528,7 +529,7 @@ public sealed class BookingConcurrencyTests
         {
             await start.Task;
 
-            var service = new BookingService(
+            var service = new InventoryService(
                 db, TimeProvider.System );
 
             return await service.HoldAsync( 
@@ -624,7 +625,7 @@ public sealed class BookingConcurrencyTests
         {
             await start.Task;
 
-            var service = new BookingService(
+            var service = new InventoryService(
                 db, TimeProvider.System );
 
             return await service.HoldAsync(
@@ -766,7 +767,7 @@ public sealed class BookingConcurrencyTests
         {
             await start.Task;
 
-            var service = new BookingService(
+            var service = new InventoryService(
                 db, TimeProvider.System );
 
             return await service.HoldAsync(
@@ -912,15 +913,15 @@ public sealed class BookingConcurrencyTests
         Guid buyer = Guid.NewGuid();
 
         await using var db1 = new BookingDbContext(options);
-        var first = await new BookingService(db1, TimeProvider.System)
+        var first = await new InventoryService(db1, TimeProvider.System)
             .HoldAsync(DemoEvent, buyer, "same-command", ["A-001"], CancellationToken.None);
 
         await using var db2 = new BookingDbContext(options);
-        var replay = await new BookingService(db2, TimeProvider.System)
+        var replay = await new InventoryService(db2, TimeProvider.System)
             .HoldAsync(DemoEvent, buyer, "same-command", ["A-001"], CancellationToken.None);
 
         await using var db3 = new BookingDbContext(options);
-        var altered = await new BookingService(db3, TimeProvider.System)
+        var altered = await new InventoryService(db3, TimeProvider.System)
             .HoldAsync(DemoEvent, buyer, "same-command", ["A-002"], CancellationToken.None);
 
         Assert.Equal(ResultKind.Created, first.Kind);

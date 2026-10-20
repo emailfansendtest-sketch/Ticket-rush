@@ -2,6 +2,7 @@
   <ItemGroup>
     <ProjectReference Include="../TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
     <ProjectReference Include="../TicketRush.Catalog/TicketRush.Catalog.csproj" />
+    <ProjectReference Include="../TicketRush.Inventory/TicketRush.Inventory.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

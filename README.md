@@ -86,3 +86,12 @@ Raw PostgreSQL locking queries now use `IEntitySchema<TEntity>` backed by the fi
 ## Phase 1 modularization
 
 Catalog event queries are now implemented in `TicketRush.Catalog`. See [docs/catalog-extraction.md](docs/catalog-extraction.md). Booking operations and the EF migration history remain unchanged.
+
+## Phase-1 module boundaries
+
+- **Catalog:** `TicketRush.Catalog` owns the event-listing query and `IEventCatalog`.
+- **Inventory:** `TicketRush.Inventory` owns seat availability and `HoldAsync` (including locking, expiry and hold idempotency). `IInventoryService` is the public in-process boundary.
+- **Checkout (temporary):** `BookingService.ConfirmAsync` remains in shared Infrastructure until the Ordering extraction. Its original single PostgreSQL transaction is unchanged.
+- `TicketRush.Infrastructure` owns the shared `BookingDbContext`, EF mappings and migrations. No module-specific migration was introduced for these code-only refactorings.
+
+The two module assemblies still reference Infrastructure in Phase 1. They are *not* independent services or independent databases.
