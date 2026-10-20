@@ -1,6 +1,6 @@
 # TicketRush — flash-sale seat booking (.NET 10)
 
-> **Status: Phase 1 modular monolith, final validation in progress — not a microservices platform.** Catalog, Inventory, and Ordering are extracted; the developer reported a successful build and **24 passing tests**. This follow-up adds two expiry-regression tests and usable hold/order read URLs; run the full suite and Compose smoke locally before claiming Phase 1 completion.
+> **Status: Phase 2 Step 2.2 Catalog extraction (candidate; local validation pending).** The Phase 1 modular monolith has 26 passing tests, and Step 2.1 contracts brought the reported count to 29. This change introduces an independently deployable Catalog host/database and HTTP forwarding. Existing Inventory/Ordering transaction logic remains unchanged.
 
 A booking system that evolves from a **modular monolith** into distributed, horizontally scalable services. Its core invariant is: **a seat is never sold twice**. PostgreSQL is the source of truth; later Redis caching/admission does not change this.
 
@@ -10,13 +10,13 @@ The existing chat application demonstrates asynchronous pipelines, SSE and bound
 
 ## Phase 1: implemented starter scope
 
-- One ASP.NET Core Minimal API with **Catalog**, **Inventory**, and **Ordering** assemblies. Ordering coordinates checkout via Inventory's transactional checkout interface. All modules share EF Core persistence and one PostgreSQL database.
+- The Phase 1 application started as one ASP.NET Core Minimal API with **Catalog**, **Inventory**, and **Ordering** assemblies. Ordering coordinates checkout via Inventory's transactional checkout interface. After this step, Catalog has its own database and API; Inventory and Ordering continue sharing the original booking database/transaction.
 - PostgreSQL transaction and deterministic `FOR UPDATE` seat-row locks; an event/seat has one row and one status.
 - Atomic holds for 1–6 seats, with expiry timestamps. Expired holds can be reclaimed.
 - Idempotency keys for holds and checkout, backed by database unique indexes.
 - Confirmed checkout sets the held seats to **Sold** in the same transaction that creates its order (no payment integration yet).
 - EF Core 10 context, Npgsql `xmin` row-version mapping, generated `InitialCreate` migration, dedicated `TicketRush.DbMigrator` job and containerized API.
-- xUnit + Testcontainers tests cover booking concurrency, hold expiry, idempotency, migrations, Catalog queries, and Inventory seat projection. The developer confirmed **24 tests pass** before this completion patch. This patch adds two expiry-regression tests (**26 expected**), pending local execution.
+- xUnit + Testcontainers tests cover booking concurrency, hold expiry, idempotency, migrations, Catalog queries, and Inventory seat projection. The developer confirmed **26 Phase 1 tests** and **29 tests after Phase 2 Step 2.1**. This step adds two more Catalog HTTP/storage tests (**31 expected**; local validation pending).
 
 **Important limitations:** authentication is not implemented, the buyer ID is supplied by the caller, checkout is not a payment, there is no waiting room, and Redis/RabbitMQ/sagas/Kubernetes/Aspire/Native AOT are **planned**, not implemented. This local API must not be exposed publicly.
 
@@ -28,9 +28,9 @@ Requires Docker Desktop or Docker Engine. For IDE development with .NET 10, use 
 docker compose up --build
 ```
 
-API: `http://localhost:8088` ; PostgreSQL: localhost port `5439`. Both ports are bound to **127.0.0.1 only** by Compose because the API has no authentication and the database credentials are development-only. Do not forward these ports or expose this stack on a public network.
+Booking API: `http://localhost:8088`; Catalog API: `http://localhost:8090`; Booking PostgreSQL: localhost port `5439`; Catalog PostgreSQL: localhost port `5440`. All published ports bind to **127.0.0.1 only** by Compose because the API has no authentication and the database credentials are development-only. Do not forward these ports or expose this stack on a public network.
 
-Docker Compose starts PostgreSQL, runs the `migrate` service to apply EF Core migrations and optionally seed demo data (`SEED_DEMO_DATA=true`), and only then starts the API. `deploy/postgres/001_schema.sql` is legacy material and is **not executed by Compose**. To intentionally reset disposable local data, `docker compose down -v` removes the PostgreSQL volume (all database data is destroyed).
+Compose starts separate Catalog and Booking PostgreSQL containers, runs separate `catalog-migrate` and `migrate` jobs, and then starts the two APIs. Both migration jobs seed the same fixed demo event ID for their temporary independent roles. The old Booking database retains its local event-reference table to satisfy Inventory foreign keys during the transition. `deploy/postgres/001_schema.sql` is legacy material and is **not executed by Compose**. To intentionally reset disposable local data, `docker compose down -v` removes the PostgreSQL volume (all database data is destroyed).
 
 ### Try the API
 
@@ -60,7 +60,7 @@ dotnet build TicketRush.slnx
 dotnet test TicketRush.slnx
 ```
 
-Tests create ephemeral PostgreSQL instances via Testcontainers; Docker must be running. The developer reported a successful build and all **24** tests passing. This patch adds two expiry tests (26 expected) using a controlled `TimeProvider` and PostgreSQL Testcontainers; run them locally (the patch author's environment has no .NET SDK or Docker).
+Tests create ephemeral PostgreSQL instances via Testcontainers; Docker must be running. The developer reported 29 tests passing before this patch. This adds two Catalog service tests, for 31 expected. Tests require Docker/Testcontainers; the patch author could not run .NET or Docker here.
 
 ## Why row locks + a single authoritative seat row?
 
@@ -72,11 +72,11 @@ Tests create ephemeral PostgreSQL instances via Testcontainers; Docker must be r
 
 ## Roadmap
 
-See `docs/architecture.md`, `docs/roadmap/README.md`, and `docs/implementation-notes.md` (supplied by the Copilot proposal). Phase 2 introduces independent Inventory, Ordering and Payment services and a MassTransit saga; Phase 3 adds Redis admission control, live seat maps, Kubernetes, and scale tests; Phase 4 measures heap allocations, bitset seat-map representation and AOT where useful.
+See `docs/architecture.md`, `docs/roadmap/README.md`, and `docs/implementation-notes.md` (supplied by the Copilot proposal). Phase 2 is extracting Catalog first, then independent Inventory and Ordering with RabbitMQ/outbox and a saga; Phase 3 adds Redis admission control, live seat maps, Kubernetes, and scale tests; Phase 4 measures heap allocations, bitset seat-map representation and AOT where useful.
 
 ## Phase 1 exit validation
 
-Run `dotnet test TicketRush.slnx` (26 tests expected with this patch), `docker compose up -d --build`, and `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Phase1-Docker.ps1`. For the acceptance checklist and accurate 1,000-attempt concurrency description, see [docs/phase1-completion.md](docs/phase1-completion.md).
+Run `dotnet test TicketRush.slnx` (32 tests expected for Phase 2 Step 2.2 after the review correction), `docker compose up -d --build`, and `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Phase1-Docker.ps1`. For the acceptance checklist and accurate 1,000-attempt concurrency description, see [docs/phase1-completion.md](docs/phase1-completion.md).
 
 Known remaining limitations: no authenticated buyer identity, no payment, no measured multi-replica scale or memory benchmarks. This API is a **local demonstration only**, not appropriate for public deployment. Before Phase 2, capture the test result and add a brief Phase 1 architecture/limitations summary. Avoid splitting the shared checkout transaction until distributed saga/outbox design is ready.
 
@@ -87,11 +87,11 @@ Raw PostgreSQL locking queries now use `IEntitySchema<TEntity>` backed by the fi
 
 ## Phase 1 modularization
 
-Catalog event queries are now implemented in `TicketRush.Catalog`. See [docs/catalog-extraction.md](docs/catalog-extraction.md). The EF migration history remains unchanged; booking invariants are preserved through the service extraction.
+Catalog event queries are now implemented in `TicketRush.Catalog.Storage` behind `IEventCatalog`; the Booking API uses `HttpEventCatalog`. See [docs/catalog-extraction.md](docs/catalog-extraction.md). The EF migration history remains unchanged; booking invariants are preserved through the service extraction.
 
 ## Phase-1 module boundaries
 
-- **Catalog:** `TicketRush.Catalog` owns the event-listing query and `IEventCatalog`.
+- **Catalog:** the Catalog API and Storage project own event discovery and persistence; `TicketRush.Catalog` exposes its read contract/client.
 - **Inventory:** `TicketRush.Inventory` owns seat availability and `HoldAsync` (including locking, expiry and hold idempotency). `IInventoryService` is the public in-process boundary.
 - **Ordering:** `TicketRush.Ordering` owns checkout idempotency and `TicketOrder` creation. It calls the Inventory checkout port, which locks and updates holds/seats within the same PostgreSQL transaction.
 - `TicketRush.Infrastructure` owns the shared `BookingDbContext`, EF mappings and migrations. No module-specific migration was introduced for these code-only refactorings.
@@ -100,3 +100,21 @@ The three module assemblies still reference Infrastructure in Phase 1. They are 
 
 
 See `docs/ordering-extraction.md` for the Phase 1 Ordering boundary and validation steps.
+
+## Phase 2 Step 2.2: independently deployed Catalog (local preview)
+
+See `docs/phase2-catalog-extraction.md` and ADR 0008. The existing Booking API
+`GET /events` now calls the Catalog API over HTTP. Inventory/Ordering still use
+local Booking PostgreSQL transactions and the booking event-reference table;
+**do not claim Inventory is yet a standalone microservice.**
+
+```powershell
+Invoke-RestMethod http://localhost:8090/events
+Invoke-RestMethod http://localhost:8088/events
+```
+
+Catalog has its own storage context and initial EF migration; the two databases
+can be migrated, deployed and recovered independently. No authentication, event
+provisioning or cross-service consistency mechanism is included in this step.
+
+Catalog forwarding behavior: when Catalog is unavailable, Booking `GET /events` returns HTTP 503; a Catalog request timeout returns HTTP 504 (10-second client timeout). The endpoint does not fall back to stale Booking database event data.

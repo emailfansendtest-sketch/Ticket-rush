@@ -16,6 +16,10 @@ Catalog, Inventory and Ordering are now separate assemblies in one ASP.NET Core 
 
 ## Phase 2 — extract microservices
 
+- Step 2.1: Contracts patch with **29 tests reported passing** and pushed to GitHub (October 20, 2026).
+- Step 2.2: Catalog-host/database extraction prepared; 32 integration tests expected after dependency-failure handling test, pending local execution. See `docs/phase2-catalog-extraction.md`.
+
+
 - [ ] Extract Inventory service/database owner, Catalog read API and Ordering service
 - [ ] Add RabbitMQ (MassTransit v8 licensing verified before use) and transactional outbox/inbox
 - [ ] Orchestrated checkout saga with fake Payment adapter and compensation

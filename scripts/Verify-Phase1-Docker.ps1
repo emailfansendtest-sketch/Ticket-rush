@@ -17,9 +17,15 @@ function Request([string]$method, [string]$path, $data = $null) {
     }
     try {
         $response = Invoke-WebRequest @request
+        $contentType = [string]$response.Headers['Content-Type']
         $body = if ([string]::IsNullOrWhiteSpace($response.Content)) {
             $null
-        } else { ConvertFrom-Json -InputObject $response.Content }
+        } elseif ($contentType -match 'application/(json|[\w.-]+\+json)') {
+            ConvertFrom-Json -InputObject $response.Content
+        } else {
+            # ASP.NET Core health endpoints return plain text (for example, Healthy).
+            $response.Content
+        }
         return [pscustomobject]@{
             Status = [int]$response.StatusCode
             Body = $body

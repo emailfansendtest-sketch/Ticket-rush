@@ -13,6 +13,8 @@
     <ProjectReference Include="../../src/TicketRush.Api/TicketRush.Api.csproj" />
     <ProjectReference Include="../../src/TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
     <ProjectReference Include="../../src/TicketRush.Catalog/TicketRush.Catalog.csproj" />
+    <ProjectReference Include="../../src/TicketRush.Catalog.Storage/TicketRush.Catalog.Storage.csproj" />
+    <ProjectReference Include="../../src/TicketRush.Catalog.Api/TicketRush.Catalog.Api.csproj" />
     <ProjectReference Include="../../src/TicketRush.Inventory/TicketRush.Inventory.csproj" />
     <ProjectReference Include="../../src/TicketRush.Ordering/TicketRush.Ordering.csproj" />
   </ItemGroup>

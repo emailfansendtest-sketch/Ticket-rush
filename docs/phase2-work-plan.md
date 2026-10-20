@@ -2,23 +2,23 @@
 
 Original Copilot goal: **extract independently deployable services, RabbitMQ, transactional outbox/inbox, durable checkout saga, Payment and Notification, and Aspire**. Keep the Phase 1 `no oversell` invariant while removing the cross-module database transaction.
 
-## Stage 2.1 — groundwork (this patch)
+## Stage 2.1 — groundwork (validated)
 
 - [x] Write ADR for service-owned persistence and distributed checkout behavior
 - [x] Introduce a `TicketRush.BuildingBlocks.Contracts` project with transport-neutral `V1` message records
 - [x] Add local JSON serialization/dependency tests for message contracts (not yet broker interoperability tests)
-- [ ] Validate project build and all **29** tests locally (26 reported passing before this patch)
+- [x] Developer reported all **29** tests passing and pushed code to GitHub on October 20, 2026
 - [ ] Record the Phase 1 Docker Compose smoke result, which has not yet been reported
 
-**This patch has no runtime messaging, no outbox, and no microservice deployment.** It intentionally leaves `BookingService` removed and the working Phase 1 `OrderingService` + `InventoryService` intact.
+**Stage 2.1 had no runtime messaging, no outbox, and no microservice deployment.** It intentionally leaves `BookingService` removed and the working Phase 1 `OrderingService` + `InventoryService` intact.
 
 **Validation limitation:** the sample JSON test configures strict required-constructor-parameter handling and web-style camelCase. This is not automatically applied to future MassTransit, RabbitMQ or other message consumers; configure and test the chosen transport explicitly. Validate GUIDs, reason codes and business state after deserialization.
 
 ## Stage 2.2 — first independent service
 
-- [ ] Separate Catalog HTTP host and Catalog-owned persistence/migrations (keep GET /events behavior); plan the existing `holds`/`seats` foreign keys to `events` and event-seeding transition
-- [ ] Stop sharing EF/domain entities across service host boundaries; publish event definitions through contracts or APIs
-- [ ] Add Compose and Testcontainers coverage for independently bootstrapped Catalog
+- [x] Code prepared for separate Catalog HTTP host, CatalogDbContext, Catalog migration/seeder and Booking HTTP forwarding; **pending local build/tests/Compose validation**; retain Booking event reference registry temporarily
+- [x] Catalog owns its own CatalogEvent EF entity; Booking is configured to read EventSummary over HTTP without a cross-service DbContext reference
+- [x] Compose and Testcontainers code added for independently bootstrapped Catalog (pending local execution)
 
 ## Stage 2.3 — establish durable ordering
 

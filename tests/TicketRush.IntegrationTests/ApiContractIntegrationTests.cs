@@ -290,6 +290,16 @@ public sealed class ApiContractIntegrationTests
     private static Task InitializeDatabaseAsync(string connectionString) =>
         TestDatabaseInitializer.InitializeAsync(CreateDbOptions(connectionString));
 
+    private sealed class FixedDemoEventCatalog : IEventCatalog
+    {
+        public Task<IReadOnlyList<EventSummary>> ListEventsAsync(CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<EventSummary>>(new[]
+            {
+                new EventSummary(DemoDataSeeder.DemoEventId, "Demo Concert",
+                    new DateTimeOffset(2027, 4, 20, 18, 0, 0, TimeSpan.Zero))
+            });
+    }
+
     private sealed class TicketRushApiFactory(
         string connectionString, TimeProvider? testClock = null) : WebApplicationFactory<Program>
     {
@@ -299,6 +309,15 @@ public sealed class ApiContractIntegrationTests
             // Resolve the actual content root explicitly so WebApplicationFactory
             // does not depend on its solution-relative folder convention.
             builder.UseContentRoot(FindApiContentRoot());
+
+            // Existing booking HTTP tests use an isolated stub Catalog, so the
+            // known Phase 1 booking behavior does not depend on an external host.
+            // Cross-service forwarding is tested separately by CatalogServiceHttpTests.
+            builder.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IEventCatalog>();
+                services.AddSingleton<IEventCatalog>(new FixedDemoEventCatalog());
+            });
 
             var clockOverride = testClock;
             if (clockOverride is not null)

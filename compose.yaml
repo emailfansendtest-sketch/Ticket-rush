@@ -14,6 +14,44 @@ services:
       retries: 15
     volumes:
       - ticket_pg:/var/lib/postgresql/data
+  catalog-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ticketrush
+      POSTGRES_PASSWORD: localdevonly
+      POSTGRES_DB: ticketrush_catalog
+    ports:
+      - "127.0.0.1:5440:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketrush -d ticketrush_catalog"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - ticket_catalog_pg:/var/lib/postgresql/data
+  catalog-migrate:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Catalog.DbMigrator/Dockerfile
+    environment:
+      ConnectionStrings__CatalogDb: Host=catalog-postgres;Port=5432;Database=ticketrush_catalog;Username=ticketrush;Password=localdevonly
+      SEED_DEMO_DATA: "true"
+    depends_on:
+      catalog-postgres:
+        condition: service_healthy
+    restart: "no"
+  catalog-api:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Catalog.Api/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__CatalogDb: Host=catalog-postgres;Port=5432;Database=ticketrush_catalog;Username=ticketrush;Password=localdevonly
+    ports:
+      - "127.0.0.1:8090:8080"
+    depends_on:
+      catalog-migrate:
+        condition: service_completed_successfully
   migrate:
     build:
       context: .
@@ -32,10 +70,14 @@ services:
     environment:
       ASPNETCORE_URLS: http://+:8080
       ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly
+      Catalog__BaseUrl: http://catalog-api:8080/
     ports:
       - "127.0.0.1:8088:8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
+      catalog-api:
+        condition: service_started
 volumes:
   ticket_pg:
+  ticket_catalog_pg:

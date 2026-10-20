@@ -10,7 +10,13 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDb")
         ?? throw new InvalidOperationException("BookingDb connection string is missing.")));
 
-builder.Services.AddScoped<IEventCatalog, EfEventCatalog>();
+// Catalog is independently hosted. Never open its database from the Booking API.
+builder.Services.AddHttpClient<IEventCatalog, HttpEventCatalog>(client =>
+{
+    client.BaseAddress = new Uri(builder.Configuration["Catalog:BaseUrl"]
+        ?? "http://localhost:8090/");
+    client.Timeout = TimeSpan.FromSeconds(10);
+});
 // Two Inventory ports resolve to ONE scoped instance and shared EF context.
 builder.Services.AddScoped<InventoryService>();
 builder.Services.AddScoped<IInventoryService>(sp => sp.GetRequiredService<InventoryService>());
