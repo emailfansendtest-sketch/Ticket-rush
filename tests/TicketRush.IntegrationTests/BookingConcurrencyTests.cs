@@ -23,13 +23,7 @@ public sealed class BookingConcurrencyTests
         var options = new DbContextOptionsBuilder<BookingDbContext>()
             .UseNpgsql(postgres.GetConnectionString()).Options;
 
-        await using (var setup = new BookingDbContext(options))
-        {
-            var schema = await File.ReadAllTextAsync(Path.Combine(
-                AppContext.BaseDirectory, "001_schema.sql"));
-
-            await setup.Database.ExecuteSqlRawAsync(schema);
-        }
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         // Every seat is targeted by 10 independent buyers. Limit *in-flight* work to
         // avoid 1,000 open sockets; all 1,000 attempts are started as tasks.
@@ -95,13 +89,7 @@ public sealed class BookingConcurrencyTests
             .UseNpgsql( postgres.GetConnectionString() )
             .Options;
 
-        await using(var setup = new BookingDbContext( options ))
-        {
-            var schema = await File.ReadAllTextAsync(
-                Path.Combine( AppContext.BaseDirectory, "001_schema.sql" ) );
-
-            await setup.Database.ExecuteSqlRawAsync( schema );
-        }
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         static string SeatCode( int index ) => $"A-{index + 1:000}";
 
@@ -311,13 +299,8 @@ public sealed class BookingConcurrencyTests
             .UseNpgsql( postgres.GetConnectionString() )
             .Options;
 
-        await using(var setup = new BookingDbContext( options ))
-        {
-            var schema = await File.ReadAllTextAsync(
-                Path.Combine( AppContext.BaseDirectory, "001_schema.sql" ) );
-
-            await setup.Database.ExecuteSqlRawAsync( schema );
-        }
+        await TestDatabaseInitializer.InitializeAsync( options );
+        
         var timeProviderMock = new TimeProviderMock
         {
             CurrentTimeUtc = DateTime.UtcNow.AddMinutes( -15.0 )
@@ -433,9 +416,7 @@ public sealed class BookingConcurrencyTests
         var options = new DbContextOptionsBuilder<BookingDbContext>()
             .UseNpgsql( postgres.GetConnectionString() ).Options;
 
-        await using(var setup = new BookingDbContext( options ))
-            await setup.Database.ExecuteSqlRawAsync( await File.ReadAllTextAsync(
-                Path.Combine( AppContext.BaseDirectory, "001_schema.sql" ) ) );
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         Guid buyer = Guid.NewGuid();
 
@@ -533,9 +514,7 @@ public sealed class BookingConcurrencyTests
         var options = new DbContextOptionsBuilder<BookingDbContext>()
             .UseNpgsql( postgres.GetConnectionString() ).Options;
 
-        await using(var setup = new BookingDbContext( options ))
-            await setup.Database.ExecuteSqlRawAsync( await File.ReadAllTextAsync(
-                Path.Combine( AppContext.BaseDirectory, "001_schema.sql" ) ) );
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         Guid buyer = Guid.NewGuid();
 
@@ -630,9 +609,7 @@ public sealed class BookingConcurrencyTests
         var options = new DbContextOptionsBuilder<BookingDbContext>()
             .UseNpgsql( postgres.GetConnectionString() ).Options;
 
-        await using(var setup = new BookingDbContext( options ))
-            await setup.Database.ExecuteSqlRawAsync( await File.ReadAllTextAsync(
-                Path.Combine( AppContext.BaseDirectory, "001_schema.sql" ) ) );
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         Guid firstBuyer = Guid.NewGuid();
         Guid secondBuyer = Guid.NewGuid();
@@ -775,9 +752,7 @@ public sealed class BookingConcurrencyTests
         var options = new DbContextOptionsBuilder<BookingDbContext>()
             .UseNpgsql( postgres.GetConnectionString() ).Options;
 
-        await using(var setup = new BookingDbContext( options ))
-            await setup.Database.ExecuteSqlRawAsync( await File.ReadAllTextAsync(
-                Path.Combine( AppContext.BaseDirectory, "001_schema.sql" ) ) );
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         Guid buyer = Guid.NewGuid();
 
@@ -932,9 +907,7 @@ public sealed class BookingConcurrencyTests
         var options = new DbContextOptionsBuilder<BookingDbContext>()
             .UseNpgsql(postgres.GetConnectionString()).Options;
 
-        await using (var setup = new BookingDbContext(options))
-            await setup.Database.ExecuteSqlRawAsync(await File.ReadAllTextAsync(
-                Path.Combine(AppContext.BaseDirectory, "001_schema.sql")));
+        await TestDatabaseInitializer.InitializeAsync( options );
 
         Guid buyer = Guid.NewGuid();
 
