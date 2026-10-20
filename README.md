@@ -1,6 +1,6 @@
 # TicketRush — flash-sale seat booking (.NET 10)
 
-> **Status: Phase 2 Step 2.2 Catalog extraction (candidate; local validation pending).** The Phase 1 modular monolith has 26 passing tests, and Step 2.1 contracts brought the reported count to 29. This change introduces an independently deployable Catalog host/database and HTTP forwarding. Existing Inventory/Ordering transaction logic remains unchanged.
+> **Status: Phase 2 Step 2.3a Ordering durable-intake foundation (local validation pending).** The validated Step 2.2 baseline has 32 passing tests and a passing Docker Compose smoke test. This increment adds an independent Ordering database and atomic Pending-order/outbox writes; the existing Booking HTTP checkout still uses the Phase 1 synchronous transaction.
 
 A booking system that evolves from a **modular monolith** into distributed, horizontally scalable services. Its core invariant is: **a seat is never sold twice**. PostgreSQL is the source of truth; later Redis caching/admission does not change this.
 
@@ -16,7 +16,7 @@ The existing chat application demonstrates asynchronous pipelines, SSE and bound
 - Idempotency keys for holds and checkout, backed by database unique indexes.
 - Confirmed checkout sets the held seats to **Sold** in the same transaction that creates its order (no payment integration yet).
 - EF Core 10 context, Npgsql `xmin` row-version mapping, generated `InitialCreate` migration, dedicated `TicketRush.DbMigrator` job and containerized API.
-- xUnit + Testcontainers tests cover booking concurrency, hold expiry, idempotency, migrations, Catalog queries, and Inventory seat projection. The developer confirmed **26 Phase 1 tests** and **29 tests after Phase 2 Step 2.1**. This step adds two more Catalog HTTP/storage tests (**31 expected**; local validation pending).
+- xUnit + Testcontainers tests cover booking concurrency, hold expiry, idempotency, migrations, Catalog queries, and Inventory seat projection. The developer confirmed **32 tests after the reviewed Catalog extraction**. Step 2.3a adds eight Ordering-intake test cases (40 expected; local validation pending).
 
 **Important limitations:** authentication is not implemented, the buyer ID is supplied by the caller, checkout is not a payment, there is no waiting room, and Redis/RabbitMQ/sagas/Kubernetes/Aspire/Native AOT are **planned**, not implemented. This local API must not be exposed publicly.
 
@@ -28,9 +28,9 @@ Requires Docker Desktop or Docker Engine. For IDE development with .NET 10, use 
 docker compose up --build
 ```
 
-Booking API: `http://localhost:8088`; Catalog API: `http://localhost:8090`; Booking PostgreSQL: localhost port `5439`; Catalog PostgreSQL: localhost port `5440`. All published ports bind to **127.0.0.1 only** by Compose because the API has no authentication and the database credentials are development-only. Do not forward these ports or expose this stack on a public network.
+Booking API: `http://localhost:8088`; Catalog API: `http://localhost:8090`; Booking PostgreSQL: localhost port `5439`; Catalog PostgreSQL: localhost port `5440`; Ordering PostgreSQL: localhost port `5441`. All published ports bind to **127.0.0.1 only** by Compose because the API has no authentication and the database credentials are development-only. Do not forward these ports or expose this stack on a public network.
 
-Compose starts separate Catalog and Booking PostgreSQL containers, runs separate `catalog-migrate` and `migrate` jobs, and then starts the two APIs. Both migration jobs seed the same fixed demo event ID for their temporary independent roles. The old Booking database retains its local event-reference table to satisfy Inventory foreign keys during the transition. `deploy/postgres/001_schema.sql` is legacy material and is **not executed by Compose**. To intentionally reset disposable local data, `docker compose down -v` removes the PostgreSQL volume (all database data is destroyed).
+Compose starts Booking, Catalog and Ordering PostgreSQL containers, runs separate `migrate`, `catalog-migrate`, and `ordering-migrate` jobs, and then starts the Booking and Catalog APIs. The new Ordering database is only used by tests and its migrator in this increment; no Ordering HTTP service or outbox publisher exists yet. The Booking and Catalog migration jobs seed the same fixed demo event ID for their temporary independent roles; Ordering migration creates schema without seeding orders. The old Booking database retains its local event-reference table to satisfy Inventory foreign keys during the transition. `deploy/postgres/001_schema.sql` is legacy material and is **not executed by Compose**. To intentionally reset disposable local data, `docker compose down -v` removes the PostgreSQL volume (all database data is destroyed).
 
 ### Try the API
 
@@ -60,7 +60,7 @@ dotnet build TicketRush.slnx
 dotnet test TicketRush.slnx
 ```
 
-Tests create ephemeral PostgreSQL instances via Testcontainers; Docker must be running. The developer reported 29 tests passing before this patch. This adds two Catalog service tests, for 31 expected. Tests require Docker/Testcontainers; the patch author could not run .NET or Docker here.
+Tests create ephemeral PostgreSQL instances via Testcontainers; Docker must be running. The developer reported 32 tests passing before this patch. This adds eight Ordering intake test cases, for 40 expected. Tests require Docker/Testcontainers; the patch author could not run .NET or Docker here.
 
 ## Why row locks + a single authoritative seat row?
 
@@ -76,7 +76,7 @@ See `docs/architecture.md`, `docs/roadmap/README.md`, and `docs/implementation-n
 
 ## Phase 1 exit validation
 
-Run `dotnet test TicketRush.slnx` (32 tests expected for Phase 2 Step 2.2 after the review correction), `docker compose up -d --build`, and `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Phase1-Docker.ps1`. For the acceptance checklist and accurate 1,000-attempt concurrency description, see [docs/phase1-completion.md](docs/phase1-completion.md).
+Run `dotnet test TicketRush.slnx` (40 tests expected for Phase 2 Step 2.3a, subject to local verification), `docker compose up -d --build`, and `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Phase1-Docker.ps1`. For the acceptance checklist and accurate 1,000-attempt concurrency description, see [docs/phase1-completion.md](docs/phase1-completion.md).
 
 Known remaining limitations: no authenticated buyer identity, no payment, no measured multi-replica scale or memory benchmarks. This API is a **local demonstration only**, not appropriate for public deployment. Before Phase 2, capture the test result and add a brief Phase 1 architecture/limitations summary. Avoid splitting the shared checkout transaction until distributed saga/outbox design is ready.
 
@@ -118,3 +118,7 @@ can be migrated, deployed and recovered independently. No authentication, event
 provisioning or cross-service consistency mechanism is included in this step.
 
 Catalog forwarding behavior: when Catalog is unavailable, Booking `GET /events` returns HTTP 503; a Catalog request timeout returns HTTP 504 (10-second client timeout). The endpoint does not fall back to stale Booking database event data.
+
+### Phase 2.3a — Ordering durable intake foundation
+
+A separate `TicketRush.Ordering.Persistence` project and `ordering-postgres` database now store Pending checkout intents and `CheckoutRequestedV1` outbox messages atomically. This path is not wired to the existing synchronous `/orders` endpoint yet. See [phase2-ordering-intake](docs/phase2-ordering-intake.md).

@@ -17,5 +17,6 @@
     <ProjectReference Include="../../src/TicketRush.Catalog.Api/TicketRush.Catalog.Api.csproj" />
     <ProjectReference Include="../../src/TicketRush.Inventory/TicketRush.Inventory.csproj" />
     <ProjectReference Include="../../src/TicketRush.Ordering/TicketRush.Ordering.csproj" />
+    <ProjectReference Include="../../src/TicketRush.Ordering.Persistence/TicketRush.Ordering.Persistence.csproj" />
   </ItemGroup>
 </Project>

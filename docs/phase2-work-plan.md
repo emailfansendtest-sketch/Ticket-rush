@@ -8,7 +8,7 @@ Original Copilot goal: **extract independently deployable services, RabbitMQ, tr
 - [x] Introduce a `TicketRush.BuildingBlocks.Contracts` project with transport-neutral `V1` message records
 - [x] Add local JSON serialization/dependency tests for message contracts (not yet broker interoperability tests)
 - [x] Developer reported all **29** tests passing and pushed code to GitHub on October 20, 2026
-- [ ] Record the Phase 1 Docker Compose smoke result, which has not yet been reported
+- [x] Phase 1 Docker Compose HTTP smoke reported PASS on October 20, 2026
 
 **Stage 2.1 had no runtime messaging, no outbox, and no microservice deployment.** It intentionally leaves `BookingService` removed and the working Phase 1 `OrderingService` + `InventoryService` intact.
 
@@ -16,14 +16,15 @@ Original Copilot goal: **extract independently deployable services, RabbitMQ, tr
 
 ## Stage 2.2 — first independent service
 
-- [x] Code prepared for separate Catalog HTTP host, CatalogDbContext, Catalog migration/seeder and Booking HTTP forwarding; **pending local build/tests/Compose validation**; retain Booking event reference registry temporarily
+- [x] Independent Catalog HTTP host and persistence; user reported 32 passing tests, deployed services and Docker HTTP smoke PASS
 - [x] Catalog owns its own CatalogEvent EF entity; Booking is configured to read EventSummary over HTTP without a cross-service DbContext reference
 - [x] Compose and Testcontainers code added for independently bootstrapped Catalog (pending local execution)
 
 ## Stage 2.3 — establish durable ordering
 
-- [ ] Ordering has its own order DB, new Pending/Completed/Failed state, and unique idempotency key
-- [ ] Configure transactional outbox using a pinned, license-reviewed messaging library; add RabbitMQ, retry/ack and inbox
+- [ ] Verify Step 2.3a Ordering-owned DB, Pending/Completed/Failed data model, and unique idempotency key (patch prepared; local build/tests pending); not yet wired to public API
+- [ ] Verify Step 2.3a atomic persistence of CheckoutRequestedV1 with the Pending intent (patch prepared; local DB test pending)
+- [ ] Add RabbitMQ dispatcher with publish confirms, retry/ack, and consumer inbox deduplication
 - [ ] Verify kill/restart around database commit vs. broker publish leaves no lost checkout intent
 
 ## Stage 2.4 — distributed checkout
