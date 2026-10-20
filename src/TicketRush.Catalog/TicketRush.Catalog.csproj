@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <!-- Phase 1: Catalog owns its query implementation but shares EF persistence. -->
+    <ProjectReference Include="../TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+  </ItemGroup>
+</Project>

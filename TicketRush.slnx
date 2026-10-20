@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="src/TicketRush.Domain/TicketRush.Domain.csproj" />
+  <Project Path="src/TicketRush.Catalog/TicketRush.Catalog.csproj" />
   <Project Path="src/TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
   <Project Path="src/TicketRush.Api/TicketRush.Api.csproj" />
   <Project Path="src/TicketRush.DbMigrator/TicketRush.DbMigrator.csproj" />

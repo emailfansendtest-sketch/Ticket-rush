@@ -81,3 +81,8 @@ Replace one-off development bootstrap SQL with **EF Core migrations** and a dedi
 ## EF model-derived SQL identifiers
 
 Raw PostgreSQL locking queries now use `IEntitySchema<TEntity>` backed by the finalized EF Core model instead of repeating table/column names. See `docs/entity-schema-refactor.md`.
+
+
+## Phase 1 modularization
+
+Catalog event queries are now implemented in `TicketRush.Catalog`. See [docs/catalog-extraction.md](docs/catalog-extraction.md). Booking operations and the EF migration history remain unchanged.

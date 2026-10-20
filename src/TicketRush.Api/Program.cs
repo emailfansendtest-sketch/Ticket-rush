@@ -1,4 +1,6 @@
 using Microsoft.EntityFrameworkCore;
+using TicketRush.Api.Endpoints;
+using TicketRush.Catalog;
 using TicketRush.Domain;
 using TicketRush.Infrastructure;
 
@@ -7,17 +9,14 @@ builder.Services.AddDbContext<BookingDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDb")
         ?? throw new InvalidOperationException("BookingDb connection string is missing.")));
 builder.Services.AddScoped<BookingService>();
+builder.Services.AddScoped<IEventCatalog, EfEventCatalog>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 app.MapHealthChecks("/health/live");
 
-app.MapGet("/events", async (BookingDbContext db, CancellationToken ct) =>
-    await db.Events.AsNoTracking()
-        .OrderBy(x => x.StartsAtUtc)
-        .Select(x => new { x.Id, x.Name, x.StartsAtUtc })
-        .ToListAsync(ct));
+app.MapCatalogEndpoints();
 
 app.MapGet("/events/{eventId:guid}/seats", async (Guid eventId, BookingDbContext db,
     CancellationToken ct) =>

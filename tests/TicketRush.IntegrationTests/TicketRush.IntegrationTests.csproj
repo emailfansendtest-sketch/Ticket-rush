@@ -9,5 +9,6 @@
     </PackageReference>
     <PackageReference Include="Testcontainers.PostgreSql" />
     <ProjectReference Include="../../src/TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/TicketRush.Catalog/TicketRush.Catalog.csproj" />
   </ItemGroup>
 </Project>
