@@ -131,6 +131,7 @@ public sealed class InventorySaleCommandProcessor(
         if (byMessageId is not null)
         {
             ValidateIdentity(byMessageId, command);
+            await RestoreResultPublicationIfNeededAsync(byMessageId, ct);
             return InventoryCommandOutcome.Duplicate;
         }
         var byOrderId = await db.InventoryInbox.AsNoTracking()
@@ -138,9 +139,46 @@ public sealed class InventorySaleCommandProcessor(
         if (byOrderId is not null)
         {
             ValidateIdentity(byOrderId, command);
+            await RestoreResultPublicationIfNeededAsync(byOrderId, ct);
             return InventoryCommandOutcome.Duplicate;
         }
         return null;
+    }
+
+    /// <summary>
+    /// A replay may be the Ordering watchdog recovering a missing Inventory result.
+    /// Re-arm ONLY a previously confirmed outbox row, with its original payload
+    /// and MessageId. A pending row (including one with scheduled broker retries)
+    /// is left unchanged. The conditional UPDATE serializes with the publisher's
+    /// FOR UPDATE lock, so the publisher cannot overwrite the restored state.
+    /// No seat/hold/order mutation takes place on this path.
+    /// </summary>
+    private async Task RestoreResultPublicationIfNeededAsync(
+        InventoryInboxMessage receipt, CancellationToken ct)
+    {
+        var matching = db.InventoryResultOutbox.Where(x =>
+            x.MessageId == receipt.ResultMessageId &&
+            x.OrderId == receipt.OrderId &&
+            x.MessageType == receipt.ResultType);
+
+        // A single parameterized PostgreSQL UPDATE is atomic and takes the row
+        // lock normally, without relying on EF Core 10's nullable ExecuteUpdate
+        // translation. It is deliberately restricted to this stable receipt.
+        var rearmed = await db.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE inventory_result_outbox
+            SET published_at_utc = NULL, next_attempt_at_utc = NULL, last_error = NULL
+            WHERE message_id = {receipt.ResultMessageId}
+              AND order_id = {receipt.OrderId}
+              AND message_type = {receipt.ResultType}
+              AND published_at_utc IS NOT NULL
+            """, ct);
+
+        // A pending row is normal: the initial publication or retry is already
+        // underway. Missing/mismatched rows are an invariant violation, not a
+        // successful idempotent replay.
+        if (rearmed == 0 && !await matching.AsNoTracking().AnyAsync(ct))
+            throw new InvalidDataException(
+                "Inventory inbox receipt has no matching durable result outbox message.");
     }
 
     private static void ValidateIdentity(

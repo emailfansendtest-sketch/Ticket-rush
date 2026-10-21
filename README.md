@@ -1,3 +1,5 @@
+> Phase 2.3h: missing Inventory results can now be recovered by replaying the original sale command (see `README-STEP2.3H-APPLY.md`).
+
 # TicketRush — flash-sale seat booking (.NET 10)
 
 > **Status: Phase 2 Step 2.3b Ordering RabbitMQ outbox publication (local validation pending).** The validated Step 2.2 baseline has 32 passing tests and a passing Docker Compose smoke test. This increment adds an independent Ordering database and atomic Pending-order/outbox writes; the existing Booking HTTP checkout still uses the Phase 1 synchronous transaction.

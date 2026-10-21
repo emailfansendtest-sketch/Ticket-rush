@@ -235,4 +235,194 @@ public sealed class InventorySaleCommandTests
         await using var verify = new BookingDbContext(options);
         Assert.Single(await verify.InventoryInbox.ToArrayAsync());
     }
+    [Fact]
+    public async Task Duplicate_command_rearms_confirmed_sale_result_without_reselling()
+    {
+        await using var pg = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await SetupAsync(pg);
+        var (hold, buyer) = await CreateHoldAsync(options, "A-018");
+        var command = Command(hold, buyer);
+        await using (var db = new BookingDbContext(options))
+            Assert.Equal(InventoryCommandOutcome.Processed,
+                await Processor(db).ProcessAsync(command, CancellationToken.None));
+
+        Guid resultId;
+        string originalPayload;
+        await using (var db = new BookingDbContext(options))
+        {
+            var result = await db.InventoryResultOutbox.SingleAsync();
+            resultId = result.MessageId;
+            originalPayload = result.PayloadJson;
+            result.PublishedAtUtc = DateTimeOffset.UtcNow;
+            result.PublishAttempts = 1;
+            await db.SaveChangesAsync();
+        }
+
+        await using (var db = new BookingDbContext(options))
+            Assert.Equal(InventoryCommandOutcome.Duplicate,
+                await Processor(db).ProcessAsync(command, CancellationToken.None));
+
+        await using (var db = new BookingDbContext(options))
+        {
+            var result = await db.InventoryResultOutbox.SingleAsync();
+            Assert.Equal(resultId, result.MessageId);
+            Assert.Equal(originalPayload, result.PayloadJson);
+            Assert.Null(result.PublishedAtUtc);
+            Assert.Equal(1, result.PublishAttempts);
+            Assert.Null(result.NextAttemptAtUtc);
+
+            var publisher = new CapturingResultPublisher();
+            Assert.Equal(InventoryResultDispatchOutcome.Published,
+                await new InventoryResultOutboxDispatcher(db, publisher, TimeProvider.System)
+                    .DispatchNextAsync(CancellationToken.None));
+            Assert.Equal(resultId, Assert.Single(publisher.MessageIds));
+        }
+
+        await using var verify = new BookingDbContext(options);
+        Assert.Single(await verify.InventoryInbox.AsNoTracking().ToArrayAsync());
+        Assert.Single(await verify.InventoryResultOutbox.AsNoTracking().ToArrayAsync());
+        Assert.Single(await verify.Orders.AsNoTracking().ToArrayAsync());
+        Assert.Equal(SeatStatus.Sold, (await verify.Seats.SingleAsync(x =>
+            x.EventId == DemoEvent && x.SeatCode == "A-018")).Status);
+        Assert.NotNull((await verify.InventoryResultOutbox.SingleAsync()).PublishedAtUtc);
+    }
+
+    [Fact]
+    public async Task Replayed_rejection_with_same_order_and_new_command_id_rearms_same_result()
+    {
+        await using var pg = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await SetupAsync(pg);
+        var command = Command(Guid.NewGuid(), Guid.NewGuid());
+        await using (var db = new BookingDbContext(options))
+            await Processor(db).ProcessAsync(command, CancellationToken.None);
+        Guid resultId;
+        await using (var db = new BookingDbContext(options))
+        {
+            var result = await db.InventoryResultOutbox.SingleAsync();
+            resultId = result.MessageId;
+            result.PublishedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        await using (var db = new BookingDbContext(options))
+            Assert.Equal(InventoryCommandOutcome.Duplicate,
+                await Processor(db).ProcessAsync(command with { MessageId = Guid.NewGuid() },
+                    CancellationToken.None));
+        await using var verify = new BookingDbContext(options);
+        var restored = await verify.InventoryResultOutbox.SingleAsync();
+        Assert.Equal(resultId, restored.MessageId);
+        Assert.Null(restored.PublishedAtUtc);
+        Assert.Equal(nameof(InventorySaleRejectedV1), restored.MessageType);
+        Assert.Single(await verify.InventoryInbox.ToArrayAsync());
+        Assert.Empty(await verify.Orders.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Duplicate_does_not_override_a_pending_result_retry_schedule()
+    {
+        await using var pg = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await SetupAsync(pg);
+        var command = Command(Guid.NewGuid(), Guid.NewGuid());
+        await using (var db = new BookingDbContext(options))
+            await Processor(db).ProcessAsync(command, CancellationToken.None);
+        var nextAttempt = DateTimeOffset.UtcNow.AddMinutes(5);
+        await using (var db = new BookingDbContext(options))
+        {
+            var result = await db.InventoryResultOutbox.SingleAsync();
+            result.PublishAttempts = 3;
+            result.NextAttemptAtUtc = nextAttempt;
+            result.LastError = "broker unavailable";
+            await db.SaveChangesAsync();
+        }
+        await using (var db = new BookingDbContext(options))
+            Assert.Equal(InventoryCommandOutcome.Duplicate,
+                await Processor(db).ProcessAsync(command, CancellationToken.None));
+        await using var verify = new BookingDbContext(options);
+        var unchanged = await verify.InventoryResultOutbox.SingleAsync();
+        Assert.Null(unchanged.PublishedAtUtc);
+        Assert.Equal(nextAttempt.ToUnixTimeSeconds(),
+            unchanged.NextAttemptAtUtc!.Value.ToUnixTimeSeconds());
+        Assert.Equal(3, unchanged.PublishAttempts);
+        Assert.Equal("broker unavailable", unchanged.LastError);
+    }
+
+    [Fact]
+    public async Task Invalid_duplicate_identity_cannot_rearm_a_published_result()
+    {
+        await using var pg = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await SetupAsync(pg);
+        var command = Command(Guid.NewGuid(), Guid.NewGuid());
+        await using (var db = new BookingDbContext(options))
+            await Processor(db).ProcessAsync(command, CancellationToken.None);
+        await using (var db = new BookingDbContext(options))
+        {
+            (await db.InventoryResultOutbox.SingleAsync()).PublishedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        await using (var db = new BookingDbContext(options))
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                Processor(db).ProcessAsync(command with { BuyerId = Guid.NewGuid() },
+                    CancellationToken.None));
+        await using var verify = new BookingDbContext(options);
+        Assert.NotNull((await verify.InventoryResultOutbox.SingleAsync()).PublishedAtUtc);
+    }
+
+    [Fact]
+    public async Task Competing_duplicates_cannot_create_another_result_or_inbox_receipt()
+    {
+        await using var pg = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await SetupAsync(pg);
+        var command = Command(Guid.NewGuid(), Guid.NewGuid());
+        await using (var db = new BookingDbContext(options))
+            await Processor(db).ProcessAsync(command, CancellationToken.None);
+        await using (var db = new BookingDbContext(options))
+        {
+            (await db.InventoryResultOutbox.SingleAsync()).PublishedAtUtc = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+        }
+        var start = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        async Task<InventoryCommandOutcome> ReplayAsync()
+        {
+            await using var db = new BookingDbContext(options);
+            await start.Task;
+            return await Processor(db).ProcessAsync(command, CancellationToken.None);
+        }
+        var attempts = new[] { ReplayAsync(), ReplayAsync() };
+        start.TrySetResult(true);
+        Assert.All(await Task.WhenAll(attempts), outcome =>
+            Assert.Equal(InventoryCommandOutcome.Duplicate, outcome));
+        await using var verify = new BookingDbContext(options);
+        Assert.Null((await verify.InventoryResultOutbox.SingleAsync()).PublishedAtUtc);
+        Assert.Single(await verify.InventoryInbox.ToArrayAsync());
+        Assert.Single(await verify.InventoryResultOutbox.ToArrayAsync());
+        Assert.Empty(await verify.Orders.ToArrayAsync());
+    }
+
+    [Fact]
+    public async Task Missing_result_is_not_silently_acknowledged_as_a_duplicate()
+    {
+        await using var pg = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await SetupAsync(pg);
+        var command = Command(Guid.NewGuid(), Guid.NewGuid());
+        await using (var db = new BookingDbContext(options))
+            await Processor(db).ProcessAsync(command, CancellationToken.None);
+        await using (var db = new BookingDbContext(options))
+        {
+            db.InventoryResultOutbox.Remove(await db.InventoryResultOutbox.SingleAsync());
+            await db.SaveChangesAsync();
+        }
+        await using (var db = new BookingDbContext(options))
+            await Assert.ThrowsAsync<InvalidDataException>(() =>
+                Processor(db).ProcessAsync(command, CancellationToken.None));
+    }
+
+    private sealed class CapturingResultPublisher : IInventoryResultPublisher
+    {
+        public List<Guid> MessageIds { get; } = [];
+        public Task PublishAsync(InventoryResultOutbox message, CancellationToken ct)
+        {
+            MessageIds.Add(message.MessageId);
+            return Task.CompletedTask;
+        }
+    }
+
 }
