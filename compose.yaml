@@ -68,6 +68,19 @@ services:
       retries: 20
     volumes:
       - ticket_rabbitmq:/var/lib/rabbitmq
+  ordering-api:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Ordering.Api/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__OrderingDb: "Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+    ports:
+      - "127.0.0.1:8091:8080"
+    depends_on:
+      ordering-migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
   ordering-outbox:
     build:
       context: .

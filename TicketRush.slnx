@@ -8,6 +8,7 @@
   <Project Path="src/TicketRush.Inventory/TicketRush.Inventory.csproj" />
   <Project Path="src/TicketRush.Ordering/TicketRush.Ordering.csproj" />
   <Project Path="src/TicketRush.Ordering.Persistence/TicketRush.Ordering.Persistence.csproj" />
+  <Project Path="src/TicketRush.Ordering.Api/TicketRush.Ordering.Api.csproj" />
   <Project Path="src/TicketRush.Ordering.DbMigrator/TicketRush.Ordering.DbMigrator.csproj" />
   <Project Path="src/TicketRush.Ordering.OutboxPublisher/TicketRush.Ordering.OutboxPublisher.csproj" />
   <Project Path="src/TicketRush.Ordering.SagaWorker/TicketRush.Ordering.SagaWorker.csproj" />

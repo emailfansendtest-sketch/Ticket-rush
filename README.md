@@ -131,3 +131,15 @@ See [Phase 2.3b publisher design and test plan](docs/phase2-outbox-publication.m
 ### Phase 2.3e (in progress; validate locally)
 
 Ordering saga worker wires CheckoutRequested → InventorySaleRequested via Ordering outbox and InventorySaleCommitted/Rejected → Ordering result inbox and Completed/Failed state. The existing HTTP checkout route remains synchronous. See `README-STEP2.3E-APPLY.md`.
+
+## Phase 2.3f — independent HTTP checkout intake (validation pending)
+
+- New `ordering-api` service: `http://localhost:8091`. It connects only to the independent Ordering PostgreSQL database.
+- `POST /checkouts` with JSON `{ "holdId": "guid", "buyerId": "guid", "idempotencyKey": "unique-per-buyer" }` commits an Ordering intent plus the CheckoutRequestedV1 outbox fact and returns **202 Accepted** with a Location header. Replaying the same buyer/key/hold returns **200 OK** and the current state. Reusing a key for a different hold, or a hold for a different checkout, returns **409 Conflict**. Invalid values return 400.
+- `GET /checkouts/{orderId}?buyerId={buyerId}` returns `{orderId,holdId,state,requestedAtUtc,failureReasonCode}`, where state is `Pending`, `Completed`, or `Failed`. Unknown orders and mismatched buyers return 404; missing buyer ID returns 400. This is only a demonstration of buyer-scoped lookup, **not real authentication**.
+- Existing synchronous `POST /orders` on Booking's API (port 8088) is deliberately unchanged. This is a separate external endpoint, not a gateway replacement for legacy clients.
+- A 202 means **durably accepted**, not seats sold or a payment completed. Inventory validates the hold asynchronously, so an invalid or expired hold can be accepted and later Failed. No payment integration exists yet.
+- No new EF migration is required for this step; it reuses the Ordering-owned intents and result inbox.
+- Tests: six new HTTP integration test cases; expected baseline is 71.
+- Live verification: `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Checkout-Api-Saga.ps1`, which sells one disposable demo seat.
+- **Do not expose the demo APIs to an untrusted network**: the buyerId request/query value is not a credential. Authentication, authorization, throttling, and saga timeout recovery remain future work.
