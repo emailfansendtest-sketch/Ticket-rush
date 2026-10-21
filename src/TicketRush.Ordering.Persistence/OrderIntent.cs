@@ -9,6 +9,10 @@ public sealed class OrderIntent
     public string IdempotencyKey { get; set; } = string.Empty;
     public CheckoutState State { get; set; } = CheckoutState.Pending;
     public DateTimeOffset RequestedAtUtc { get; set; }
+    // Recovery is operational progress, independent of Inventory's business outcome.
+    public int RecoveryAttempts { get; set; }
+    public DateTimeOffset? NextRecoveryAtUtc { get; set; }
+    public bool RecoveryNeedsAttention { get; set; }
 }
 
 public enum CheckoutState

@@ -118,7 +118,8 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
             // Serialize outcomes for the same order. This also protects the
             // Pending -> terminal transition against competing distinct events.
             var locked = await db.OrderIntents.FromSqlInterpolated($"""
-                SELECT id, hold_id, buyer_id, idempotency_key, state, requested_at_utc
+                SELECT id, hold_id, buyer_id, idempotency_key, state, requested_at_utc,
+                       recovery_attempts, next_recovery_at_utc, recovery_needs_attention
                 FROM order_intents
                 WHERE id = {orderId}
                 FOR UPDATE
@@ -145,6 +146,9 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
                 throw new InvalidDataException("Ordering intent is terminal without an inbox receipt.");
 
             order.State = target;
+            // A late authoritative Inventory result resolves any recovery alert.
+            order.RecoveryNeedsAttention = false;
+            order.NextRecoveryAtUtc = null;
             db.ResultInbox.Add(new OrderingResultInboxMessage
             {
                 MessageId = messageId, OrderId = orderId, HoldId = holdId,

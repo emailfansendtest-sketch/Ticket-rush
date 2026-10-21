@@ -143,3 +143,7 @@ Ordering saga worker wires CheckoutRequested → InventorySaleRequested via Orde
 - Tests: six new HTTP integration test cases; expected baseline is 71.
 - Live verification: `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Checkout-Api-Saga.ps1`, which sells one disposable demo seat.
 - **Do not expose the demo APIs to an untrusted network**: the buyerId request/query value is not a credential. Authentication, authorization, throttling, and saga timeout recovery remain future work.
+
+## Phase 2.3g — Ordering saga timeout/recovery
+
+See [`README-STEP2.3G-APPLY.md`](README-STEP2.3G-APPLY.md) for setup and acceptance criteria. Stale Pending orders are durably re-driven using stable outbox message identifiers. Timeouts never imply that Inventory did not sell; exhausted recovery attempts require operator attention rather than forcing a failed sale.

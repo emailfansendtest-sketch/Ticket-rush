@@ -29,9 +29,17 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
             b.Property<int>("State").HasColumnType("integer").HasColumnName("state");
             b.Property<DateTimeOffset>("RequestedAtUtc")
                 .HasColumnType("timestamp with time zone").HasColumnName("requested_at_utc");
+            b.Property<int>("RecoveryAttempts").HasColumnType("integer")
+                .HasColumnName("recovery_attempts");
+            b.Property<DateTimeOffset?>("NextRecoveryAtUtc")
+                .HasColumnType("timestamp with time zone").HasColumnName("next_recovery_at_utc");
+            b.Property<bool>("RecoveryNeedsAttention").HasColumnType("boolean")
+                .HasColumnName("recovery_needs_attention");
             b.HasKey("Id");
             b.HasIndex("BuyerId", "IdempotencyKey").IsUnique();
             b.HasIndex("HoldId").IsUnique();
+            b.HasIndex("State", "RecoveryNeedsAttention", "NextRecoveryAtUtc", "RequestedAtUtc")
+                .HasDatabaseName("IX_order_intents_recovery_due");
             b.ToTable("order_intents", (string)null, t =>
                 t.HasCheckConstraint("CK_order_intents_state", "state IN (0,1,2)"));
         });

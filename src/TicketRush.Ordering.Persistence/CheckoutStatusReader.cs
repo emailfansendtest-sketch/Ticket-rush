@@ -5,7 +5,8 @@ namespace TicketRush.Ordering.Persistence;
 /// <summary>Ordering-owned projection. A CheckoutStatus is not a Booking TicketOrder.</summary>
 public sealed record CheckoutStatusView(
     Guid OrderId, Guid HoldId, string State, DateTimeOffset RequestedAtUtc,
-    string? FailureReasonCode);
+    string? FailureReasonCode, int RecoveryAttempts = 0,
+    bool RecoveryNeedsAttention = false);
 
 public sealed class CheckoutStatusReader(OrderingDbContext db)
 {
@@ -25,12 +26,14 @@ public sealed class CheckoutStatusReader(OrderingDbContext db)
             select new
             {
                 order.Id, order.HoldId, order.State, order.RequestedAtUtc,
+                order.RecoveryAttempts, order.RecoveryNeedsAttention,
                 FailureReasonCode = receipt == null ? null : receipt.ReasonCode
             }).SingleOrDefaultAsync(ct);
 
         return projection is null ? null : new CheckoutStatusView(
             projection.Id, projection.HoldId, projection.State.ToString(),
             projection.RequestedAtUtc,
-            projection.State == CheckoutState.Failed ? projection.FailureReasonCode : null);
+            projection.State == CheckoutState.Failed ? projection.FailureReasonCode : null,
+            projection.RecoveryAttempts, projection.RecoveryNeedsAttention);
     }
 }

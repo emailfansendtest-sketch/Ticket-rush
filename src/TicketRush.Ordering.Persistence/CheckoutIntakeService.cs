@@ -13,7 +13,7 @@ public sealed record CheckoutAdmission(
 
 /// <summary>
 /// Accepts a checkout into Ordering's own database, atomically with an outbox fact.
-/// It NEVER sells inventory or claims payment success. Not yet exposed by HTTP.
+/// It NEVER sells inventory or claims payment success. Exposed by the Ordering HTTP API.
 /// </summary>
 public sealed class CheckoutIntakeService(OrderingDbContext db, TimeProvider clock)
 {

@@ -25,6 +25,11 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
                 .HasMaxLength(100).IsRequired();
             b.Property(x => x.State).HasColumnName("state");
             b.Property(x => x.RequestedAtUtc).HasColumnName("requested_at_utc");
+            b.Property(x => x.RecoveryAttempts).HasColumnName("recovery_attempts");
+            b.Property(x => x.NextRecoveryAtUtc).HasColumnName("next_recovery_at_utc");
+            b.Property(x => x.RecoveryNeedsAttention).HasColumnName("recovery_needs_attention");
+            b.HasIndex(x => new { x.State, x.RecoveryNeedsAttention, x.NextRecoveryAtUtc, x.RequestedAtUtc })
+                .HasDatabaseName("IX_order_intents_recovery_due");
             b.HasIndex(x => new { x.BuyerId, x.IdempotencyKey }).IsUnique();
             b.HasIndex(x => x.HoldId).IsUnique();
         });
