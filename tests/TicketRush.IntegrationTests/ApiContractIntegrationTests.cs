@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -64,17 +65,24 @@ public sealed class ApiContractIntegrationTests
 
         using var holdCreatedResponse = await client.PostAsJsonAsync(holdUrl, holdCommand);
         Assert.Equal(HttpStatusCode.Created, holdCreatedResponse.StatusCode);
-        var createdHold = Assert.IsType<HoldView>(
-            await holdCreatedResponse.Content.ReadFromJsonAsync<HoldView>());
+        var createdReceipt = Assert.IsType<TicketRush.Api.Endpoints.HoldReceipt>(
+            await holdCreatedResponse.Content.ReadFromJsonAsync<TicketRush.Api.Endpoints.HoldReceipt>());
+        HoldView createdHold = new(createdReceipt.Id, createdReceipt.EventId, createdReceipt.BuyerId,
+            createdReceipt.SeatCodes, createdReceipt.ExpiresAtUtc, createdReceipt.Status);
         Assert.Equal($"/holds/{createdHold.Id:D}?buyerId={buyer:D}",
             holdCreatedResponse.Headers.Location?.OriginalString);
+        Assert.Equal("no-store", holdCreatedResponse.Headers.CacheControl?.ToString());
+        Assert.True(new TicketRush.BuildingBlocks.Contracts.Security.HoldCheckoutProof(TestHoldProofKey.Value)
+            .Verify(createdReceipt.HoldProof, createdHold.Id, buyer, DateTimeOffset.UtcNow));
 
         // Location must resolve to a real resource through a GET request.
         using var readHold = await client.GetAsync(holdCreatedResponse.Headers.Location);
         Assert.Equal(HttpStatusCode.OK, readHold.StatusCode);
+        var publicHoldJson = await readHold.Content.ReadAsStringAsync();
         var fetchedHold = Assert.IsType<HoldView>(
-            await readHold.Content.ReadFromJsonAsync<HoldView>());
+            JsonSerializer.Deserialize<HoldView>(publicHoldJson, new JsonSerializerOptions(JsonSerializerDefaults.Web)));
         Assert.Equal(createdHold.Id, fetchedHold.Id);
+        Assert.DoesNotContain("holdProof", publicHoldJson, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(createdHold.BuyerId, fetchedHold.BuyerId);
         Assert.Equal(createdHold.ExpiresAtUtc, fetchedHold.ExpiresAtUtc);
         Assert.Equal(createdHold.SeatCodes, fetchedHold.SeatCodes);
@@ -89,8 +97,12 @@ public sealed class ApiContractIntegrationTests
 
         using var holdReplayedResponse = await client.PostAsJsonAsync(holdUrl, holdCommand);
         Assert.Equal(HttpStatusCode.OK, holdReplayedResponse.StatusCode);
-        var replayedHold = Assert.IsType<HoldView>(
-            await holdReplayedResponse.Content.ReadFromJsonAsync<HoldView>());
+        var replayedReceipt = Assert.IsType<TicketRush.Api.Endpoints.HoldReceipt>(
+            await holdReplayedResponse.Content.ReadFromJsonAsync<TicketRush.Api.Endpoints.HoldReceipt>());
+        HoldView replayedHold = new(replayedReceipt.Id, replayedReceipt.EventId,
+            replayedReceipt.BuyerId, replayedReceipt.SeatCodes,
+            replayedReceipt.ExpiresAtUtc, replayedReceipt.Status);
+        Assert.Equal(createdReceipt.HoldProof, replayedReceipt.HoldProof);
         Assert.Equal(createdHold.Id, replayedHold.Id);
         Assert.Equal(createdHold.ExpiresAtUtc, replayedHold.ExpiresAtUtc);
         Assert.Equal(createdHold.SeatCodes, replayedHold.SeatCodes);
@@ -334,7 +346,8 @@ public sealed class ApiContractIntegrationTests
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:BookingDb"] = connectionString
+                    ["ConnectionStrings:BookingDb"] = connectionString,
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
                 }));
         }
 

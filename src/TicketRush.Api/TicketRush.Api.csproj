@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <ProjectReference Include="../TicketRush.BuildingBlocks.Contracts/TicketRush.BuildingBlocks.Contracts.csproj" />
     <ProjectReference Include="../TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
     <ProjectReference Include="../TicketRush.Catalog/TicketRush.Catalog.csproj" />
     <ProjectReference Include="../TicketRush.Inventory/TicketRush.Inventory.csproj" />

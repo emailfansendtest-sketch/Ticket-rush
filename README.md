@@ -149,3 +149,7 @@ Ordering saga worker wires CheckoutRequested → InventorySaleRequested via Orde
 ## Phase 2.3g — Ordering saga timeout/recovery
 
 See [`README-STEP2.3G-APPLY.md`](README-STEP2.3G-APPLY.md) for setup and acceptance criteria. Stale Pending orders are durably re-driven using stable outbox message identifiers. Timeouts never imply that Inventory did not sell; exhausted recovery attempts require operator attention rather than forcing a failed sale.
+
+## Phase 2.3i: signed hold admission proof
+
+Booking returns `holdProof` from hold POST; Ordering requires it for HTTP checkout admission. See `README-STEP2.3I-APPLY.md`. This is a local-demo bearer capability, not full buyer authentication.

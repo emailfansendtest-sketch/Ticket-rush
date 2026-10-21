@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
   <ItemGroup>
+    <ProjectReference Include="../TicketRush.BuildingBlocks.Contracts/TicketRush.BuildingBlocks.Contracts.csproj" />
     <ProjectReference Include="../TicketRush.Ordering.Persistence/TicketRush.Ordering.Persistence.csproj" />
   </ItemGroup>
 </Project>

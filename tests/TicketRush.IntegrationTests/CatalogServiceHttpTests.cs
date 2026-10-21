@@ -70,8 +70,8 @@ public sealed class CatalogServiceHttpTests
         await CatalogDemoDataSeeder.SeedAsync(db);
         await db.Database.MigrateAsync();
         await CatalogDemoDataSeeder.SeedAsync(db);
-        Assert.Equal(1, await db.Events.AsNoTracking().CountAsync());
-        Assert.Single( await db.Database.GetAppliedMigrationsAsync() );
+        Assert.Single(await db.Events.AsNoTracking().ToArrayAsync());
+        Assert.Single(await db.Database.GetAppliedMigrationsAsync());
     }
 
     private sealed class CatalogApiFactory(string connectionString) :
@@ -98,7 +98,8 @@ public sealed class CatalogServiceHttpTests
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:BookingDb"] =
-                        "Host=127.0.0.1;Port=1;Database=not_running;Username=none;Password=none"
+                        "Host=127.0.0.1;Port=1;Database=not_running;Username=none;Password=none",
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
                 }));
             builder.ConfigureTestServices(services =>
             {
@@ -122,7 +123,8 @@ public sealed class CatalogServiceHttpTests
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:BookingDb"] =
-                        "Host=127.0.0.1;Port=1;Database=not_running;Username=none;Password=none"
+                        "Host=127.0.0.1;Port=1;Database=not_running;Username=none;Password=none",
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
                 }));
             builder.ConfigureTestServices(services =>
             {

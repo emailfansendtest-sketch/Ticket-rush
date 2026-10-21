@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using TicketRush.BuildingBlocks.Contracts.Security;
 using TicketRush.Ordering.Persistence;
 
 namespace TicketRush.Ordering.Api;
@@ -16,9 +17,13 @@ public partial class Program
         builder.Services.AddScoped<CheckoutIntakeService>();
         builder.Services.AddScoped<CheckoutStatusReader>();
         builder.Services.AddSingleton(TimeProvider.System);
+        builder.Services.AddSingleton<HoldCheckoutProof>(services => new HoldCheckoutProof(
+            services.GetRequiredService<IConfiguration>()["HoldProof:KeyBase64"]));
         builder.Services.AddHealthChecks();
 
         var app = builder.Build();
+        // Validate the final configuration at startup, including test-host overrides.
+        _ = app.Services.GetRequiredService<HoldCheckoutProof>();
         app.MapHealthChecks("/health/live");
         app.MapCheckoutEndpoints();
         app.Run();

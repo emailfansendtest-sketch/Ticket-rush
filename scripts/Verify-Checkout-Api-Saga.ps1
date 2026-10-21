@@ -29,11 +29,34 @@ $hold = Invoke-RestMethod -Method Post -Uri "$BookingUrl/events/$eventId/holds" 
         seatCodes = @($seat.seatCode)
     } | ConvertTo-Json -Depth 5)
 Require ($null -ne $hold.id) 'could not create Booking hold'
+Require (-not [string]::IsNullOrWhiteSpace([string]$hold.holdProof)) 'Booking did not return a hold proof'
+
+# Negative admission test: knowing the hold ID and providing another buyer ID
+# must NOT reserve the hold in Ordering, even with the correct signed proof.
+$attackerBuyer = [guid]::NewGuid().ToString('D')
+$forgedCommand = @{
+    holdId = [string]$hold.id;
+    buyerId = $attackerBuyer;
+    holdProof = [string]$hold.holdProof;
+    idempotencyKey = 'unauthorized-' + [guid]::NewGuid().ToString('N')
+} | ConvertTo-Json -Compress
+$forbidden = $false
+try {
+    $null = Invoke-WebRequest -Method Post -Uri "$OrderingUrl/checkouts" `
+        -ContentType 'application/json' -Body $forgedCommand -UseBasicParsing -ErrorAction Stop
+}
+catch {
+    if ($null -ne $_.Exception.Response) {
+        $forbidden = ([int]$_.Exception.Response.StatusCode -eq 403)
+    }
+}
+Require $forbidden 'another buyer was not rejected with HTTP 403'
 
 $checkoutKey = 'api-saga-checkout-' + [guid]::NewGuid().ToString('N')
 $commandJson = @{
     holdId = [string]$hold.id;
     buyerId = $buyerId;
+    holdProof = [string]$hold.holdProof;
     idempotencyKey = $checkoutKey
 } | ConvertTo-Json -Compress
 $accepted = Invoke-WebRequest -Method Post -Uri "$OrderingUrl/checkouts" `

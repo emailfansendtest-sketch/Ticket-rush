@@ -1,9 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using TicketRush.BuildingBlocks.Contracts.Security;
 using TicketRush.Ordering.Persistence;
 
 namespace TicketRush.Ordering.Api;
 
-public sealed record StartCheckoutRequest(Guid HoldId, Guid BuyerId, string? IdempotencyKey);
+public sealed record StartCheckoutRequest(Guid HoldId, Guid BuyerId, string? IdempotencyKey, string? HoldProof);
 
 public static class CheckoutEndpoints
 {
@@ -18,8 +19,20 @@ public static class CheckoutEndpoints
         StartCheckoutRequest request,
         CheckoutIntakeService intake,
         CheckoutStatusReader reader,
+        HoldCheckoutProof holdProof,
+        TimeProvider clock,
         CancellationToken ct)
     {
+        if (request.HoldId == Guid.Empty || request.BuyerId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100)
+            return Results.BadRequest(new { error = "Invalid checkout identifiers or idempotency key." });
+
+        // A caller-supplied buyerId is not authorization. Without this Booking-issued
+        // capability, a different buyer could permanently claim a hold in Ordering.
+        // Never create an OrderIntent or an outbox event for an invalid proof.
+        if (!holdProof.Verify(request.HoldProof, request.HoldId, request.BuyerId, clock.GetUtcNow()))
+            return Results.Json(new { error = "Missing, expired or invalid hold proof." }, statusCode: 403);
+
         var admitted = await intake.AcceptAsync(
             request.HoldId, request.BuyerId, request.IdempotencyKey, ct);
         if (admitted.Kind == CheckoutAdmissionKind.Invalid)
