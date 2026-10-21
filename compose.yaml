@@ -115,6 +115,19 @@ services:
       postgres:
         condition: service_healthy
     restart: "no"
+  inventory-consumer:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Inventory.MessageConsumer/Dockerfile
+    environment:
+      ConnectionStrings__BookingDb: "Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+      RabbitMq__Uri: "amqp://ticketrush:localdevonly@rabbitmq:5672/"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
   api:
     build:
       context: .
