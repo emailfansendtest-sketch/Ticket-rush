@@ -153,3 +153,7 @@ See [`README-STEP2.3G-APPLY.md`](README-STEP2.3G-APPLY.md) for setup and accepta
 ## Phase 2.3i: signed hold admission proof
 
 Booking returns `holdProof` from hold POST; Ordering requires it for HTTP checkout admission. See `README-STEP2.3I-APPLY.md`. This is a local-demo bearer capability, not full buyer authentication.
+
+### Phase 2.3j — authenticated buyer API (local OIDC demonstration)
+
+Booking and Ordering now validate bearer JWTs from a Keycloak development realm. Hold creation/replay, hold reads, both checkout paths, and order-status reads are protected and correlated to the authenticated `sub` UUID. A signed hold proof remains required for distributed checkout. Anonymous Catalog and seat availability queries remain available. See [README-STEP2.3J-APPLY.md](README-STEP2.3J-APPLY.md) for local setup, JWT smoke testing and security limitations.

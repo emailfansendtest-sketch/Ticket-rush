@@ -12,7 +12,9 @@ function Require($condition, $message) {
 
 $orderId = [guid]::NewGuid().ToString('D')
 $holdId = [guid]::NewGuid().ToString('D')
-$buyerId = [guid]::NewGuid().ToString('D')
+$buyerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$token = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username alice
+$auth = @{ Authorization = "Bearer $token" }
 $checkoutFactId = [guid]::NewGuid().ToString('D')
 $commandId = [guid]::NewGuid().ToString('D')
 $resultId = [guid]::NewGuid().ToString('D')
@@ -76,7 +78,7 @@ Require ($LASTEXITCODE -eq 0) 'could not seed overdue Ordering checkout and publ
 
 $observed = $null
 for ($i = 0; $i -lt 90; $i++) {
-    $observed = Invoke-RestMethod -Uri "$OrderingUrl/checkouts/$orderId`?buyerId=$buyerId"
+    $observed = Invoke-RestMethod -Uri "$OrderingUrl/checkouts/$orderId`?buyerId=$buyerId" -Headers $auth
     if ($observed.state -eq 'Failed' -and $observed.recoveryAttempts -ge 1) { break }
     Start-Sleep -Seconds 1
 }

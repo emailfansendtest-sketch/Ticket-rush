@@ -10,7 +10,9 @@ function Require($condition, $message) {
 }
 $orderId = [guid]::NewGuid().ToString('D')
 $holdId = [guid]::NewGuid().ToString('D')
-$buyerId = [guid]::NewGuid().ToString('D')
+$buyerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$token = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username alice
+$auth = @{ Authorization = "Bearer $token" }
 $messageId = [guid]::NewGuid().ToString('D')
 
 # Deliberately seed a 5-minute-old checkout with a broker-confirmed flag
@@ -38,7 +40,7 @@ Require ($LASTEXITCODE -eq 0) 'could not insert synthetic overdue checkout'
 
 $observed = $null
 for ($i = 0; $i -lt 90; $i++) {
-    $observed = Invoke-RestMethod -Uri "$OrderingUrl/checkouts/$orderId`?buyerId=$buyerId"
+    $observed = Invoke-RestMethod -Uri "$OrderingUrl/checkouts/$orderId`?buyerId=$buyerId" -Headers $auth
     if ($observed.state -eq 'Failed' -and $observed.recoveryAttempts -ge 1) { break }
     Start-Sleep -Seconds 1
 }

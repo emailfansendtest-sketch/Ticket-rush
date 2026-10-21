@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using TicketRush.BuildingBlocks.Contracts.Security;
 using TicketRush.Ordering.Persistence;
 
@@ -10,8 +11,8 @@ public static class CheckoutEndpoints
 {
     public static IEndpointRouteBuilder MapCheckoutEndpoints(this IEndpointRouteBuilder endpoints)
     {
-        endpoints.MapPost("/checkouts", StartCheckoutAsync);
-        endpoints.MapGet("/checkouts/{orderId:guid}", GetCheckoutAsync);
+        endpoints.MapPost("/checkouts", StartCheckoutAsync).RequireAuthorization();
+        endpoints.MapGet("/checkouts/{orderId:guid}", GetCheckoutAsync).RequireAuthorization();
         return endpoints;
     }
 
@@ -21,11 +22,15 @@ public static class CheckoutEndpoints
         CheckoutStatusReader reader,
         HoldCheckoutProof holdProof,
         TimeProvider clock,
-        CancellationToken ct)
+        ClaimsPrincipal user, CancellationToken ct)
     {
         if (request.HoldId == Guid.Empty || request.BuyerId == Guid.Empty ||
             string.IsNullOrWhiteSpace(request.IdempotencyKey) || request.IdempotencyKey.Length > 100)
             return Results.BadRequest(new { error = "Invalid checkout identifiers or idempotency key." });
+
+        Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(user);
+        if (authenticatedBuyer is null || authenticatedBuyer.Value != request.BuyerId)
+            return Results.Forbid();
 
         // A caller-supplied buyerId is not authorization. Without this Booking-issued
         // capability, a different buyer could permanently claim a hold in Ordering.
@@ -54,10 +59,11 @@ public static class CheckoutEndpoints
         Guid orderId, [FromQuery] Guid? buyerId,
         CheckoutStatusReader reader, HttpContext http, CancellationToken ct)
     {
-        if (buyerId is null || buyerId == Guid.Empty)
-            return Results.BadRequest(new { error = "A nonempty buyerId query parameter is required." });
+        Guid? buyer = BuyerIdentity.FromPrincipal(http.User);
+        if (buyer is null || (buyerId.HasValue && buyerId.Value != buyer.Value))
+            return Results.NotFound();
         http.Response.Headers.CacheControl = "no-store";
-        var status = await reader.GetAsync(orderId, buyerId.Value, ct);
+        var status = await reader.GetAsync(orderId, buyer.Value, ct);
         // Unknown order and mismatched buyer have indistinguishable results.
         return status is null ? Results.NotFound() : Results.Ok(status);
     }

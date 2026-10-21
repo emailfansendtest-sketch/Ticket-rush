@@ -4,6 +4,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
@@ -41,11 +42,16 @@ public sealed class OrderingHttpIntegrationTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseContentRoot(FindContentRoot());
+            builder.UseEnvironment("Development");
+            builder.ConfigureTestServices(TestBuyerAuthentication.Configure);
             builder.ConfigureAppConfiguration((_, config) =>
                 config.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:OrderingDb"] = connectionString,
-                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value,
+                    ["Auth:Authority"] = "http://keycloak:8080/realms/ticketrush",
+                    ["Auth:Audience"] = "ticketrush-apis",
+                    ["Auth:AllowInsecureHttpMetadata"] = "true"
                 }));
         }
 
@@ -65,6 +71,29 @@ public sealed class OrderingHttpIntegrationTests
     }
 
     [Fact]
+    public async Task Http_checkout_requires_authentication_and_rejects_subject_spoofing()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await StartDbAsync(postgres);
+        using var factory = CreateFactory(postgres);
+        using var client = factory.CreateClient();
+        var owner = Guid.NewGuid();
+        var attacker = Guid.NewGuid();
+        var request = new { holdId = Hold, buyerId = owner,
+            idempotencyKey = "auth-test", holdProof = Proof(owner, Hold) };
+        using var anonymous = await client.PostAsJsonAsync("/checkouts", request);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        TestBuyerAuthentication.As(client, attacker);
+        using var forged = await client.PostAsJsonAsync("/checkouts", request);
+        Assert.Equal(HttpStatusCode.Forbidden, forged.StatusCode);
+        TestBuyerAuthentication.As(client, owner);
+        using var admitted = await client.PostAsJsonAsync("/checkouts", request);
+        Assert.Equal(HttpStatusCode.Accepted, admitted.StatusCode);
+        await using var db = new OrderingDbContext(options);
+        Assert.Single(await db.OrderIntents.AsNoTracking().ToArrayAsync());
+    }
+
+    [Fact]
     public async Task Http_intake_returns_202_location_then_200_replay_without_duplicate_outbox()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
@@ -72,6 +101,7 @@ public sealed class OrderingHttpIntegrationTests
         using var factory = CreateFactory(postgres);
         using var client = factory.CreateClient();
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         var request = new { holdId = Hold, buyerId = buyer, idempotencyKey = "http-intake-1", holdProof = Proof(buyer, Hold) };
 
         using var health = await client.GetAsync("/health/live");
@@ -111,6 +141,7 @@ public sealed class OrderingHttpIntegrationTests
         using var factory = CreateFactory(postgres);
         using var client = factory.CreateClient();
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         using var bad1 = await client.PostAsJsonAsync("/checkouts",
             new { holdId = Guid.Empty, buyerId = buyer, idempotencyKey = "valid", holdProof = Proof(buyer, Hold) });
         Assert.Equal(HttpStatusCode.BadRequest, bad1.StatusCode);
@@ -146,15 +177,16 @@ public sealed class OrderingHttpIntegrationTests
         using var factory = CreateFactory(postgres);
         using var client = factory.CreateClient();
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         using var created = await client.PostAsJsonAsync("/checkouts",
             new { holdId = Hold, buyerId = buyer, idempotencyKey = "status-security", holdProof = Proof(buyer, Hold) });
         var receipt = Assert.IsType<CheckoutStatusView>(
             await created.Content.ReadFromJsonAsync<CheckoutStatusView>());
 
         using var missingBuyer = await client.GetAsync($"/checkouts/{receipt.OrderId:D}");
-        Assert.Equal(HttpStatusCode.BadRequest, missingBuyer.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, missingBuyer.StatusCode);
         using var emptyBuyer = await client.GetAsync($"/checkouts/{receipt.OrderId:D}?buyerId={Guid.Empty:D}");
-        Assert.Equal(HttpStatusCode.BadRequest, emptyBuyer.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, emptyBuyer.StatusCode);
         using var wrongBuyer = await client.GetAsync($"/checkouts/{receipt.OrderId:D}?buyerId={Guid.NewGuid():D}");
         Assert.Equal(HttpStatusCode.NotFound, wrongBuyer.StatusCode);
         using var unknown = await client.GetAsync($"/checkouts/{Guid.NewGuid():D}?buyerId={buyer:D}");
@@ -171,6 +203,7 @@ public sealed class OrderingHttpIntegrationTests
         using var factory = CreateFactory(postgres);
         using var client = factory.CreateClient();
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         var request = new { holdId = Hold, buyerId = buyer, idempotencyKey = "status-terminal", holdProof = Proof(buyer, Hold) };
         using var created = await client.PostAsJsonAsync("/checkouts", request);
         Assert.Equal(HttpStatusCode.Accepted, created.StatusCode);
@@ -223,6 +256,7 @@ public sealed class OrderingHttpIntegrationTests
         var legitimateBuyer = Guid.NewGuid();
         var attacker = Guid.NewGuid();
         var proof = Proof(legitimateBuyer, Hold);
+        TestBuyerAuthentication.As(client, legitimateBuyer);
 
         using var missing = await client.PostAsJsonAsync("/checkouts",
             new { holdId = Hold, buyerId = attacker, idempotencyKey = "claim-1" });
@@ -246,6 +280,12 @@ public sealed class OrderingHttpIntegrationTests
         }
 
         // An invalid attempt must not lock the hold's unique key for its owner.
+        TestBuyerAuthentication.As(client, attacker);
+        using var stolen = await client.PostAsJsonAsync("/checkouts",
+            new { holdId = Hold, buyerId = legitimateBuyer,
+                idempotencyKey = "stolen", holdProof = proof });
+        Assert.Equal(HttpStatusCode.Forbidden, stolen.StatusCode);
+        TestBuyerAuthentication.As(client, legitimateBuyer);
         using var actual = await client.PostAsJsonAsync("/checkouts",
             new { holdId = Hold, buyerId = legitimateBuyer, idempotencyKey = "owner-checkout", holdProof = proof });
         Assert.Equal(HttpStatusCode.Accepted, actual.StatusCode);
@@ -259,6 +299,7 @@ public sealed class OrderingHttpIntegrationTests
         using var factory = CreateFactory(postgres);
         using var client = factory.CreateClient();
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         var expired = new HoldCheckoutProof(TestHoldProofKey.Value).Issue(
             Hold, buyer, DateTimeOffset.UtcNow.AddSeconds(-1));
         using var response = await client.PostAsJsonAsync("/checkouts",
@@ -276,6 +317,7 @@ public sealed class OrderingHttpIntegrationTests
         using var factory = CreateFactory(postgres);
         using var client = factory.CreateClient();
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         var request = new { holdId = Hold, buyerId = buyer, idempotencyKey = "concurrent-http", holdProof = Proof(buyer, Hold) };
         var start = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         async Task<HttpResponseMessage> SubmitAsync()
@@ -297,7 +339,7 @@ public sealed class OrderingHttpIntegrationTests
             var secondState = states[ 1 ];
 
             Assert.NotNull( firstState );
-            Assert.NotNull(secondState );
+            Assert.NotNull(secondState);
             Assert.Equal(firstState.OrderId, secondState.OrderId);
         }
         finally

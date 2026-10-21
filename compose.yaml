@@ -68,17 +68,34 @@ services:
       retries: 20
     volumes:
       - ticket_rabbitmq:/var/lib/rabbitmq
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.1
+    command: ["start-dev", "--import-realm", "--hostname=http://keycloak:8080"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: localadmin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: local-admin-dev-only
+    ports:
+      - "127.0.0.1:8092:8080"
+    volumes:
+      - ./deploy/keycloak/ticketrush-realm.json:/opt/keycloak/data/import/ticketrush-realm.json:ro
+    restart: unless-stopped
   ordering-api:
     build:
       context: .
       dockerfile: src/TicketRush.Ordering.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      Auth__Authority: http://keycloak:8080/realms/ticketrush
+      Auth__Audience: ticketrush-apis
+      Auth__AllowInsecureHttpMetadata: "true"
       HoldProof__KeyBase64: "${HOLD_PROOF_KEY_BASE64:?Run scripts/Initialize-Dev-Hold-Proof.ps1 first}"
       ConnectionStrings__OrderingDb: "Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
     ports:
       - "127.0.0.1:8091:8080"
     depends_on:
+      keycloak:
+        condition: service_started
       ordering-migrate:
         condition: service_completed_successfully
     restart: unless-stopped
@@ -174,12 +191,18 @@ services:
       dockerfile: src/TicketRush.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      Auth__Authority: http://keycloak:8080/realms/ticketrush
+      Auth__Audience: ticketrush-apis
+      Auth__AllowInsecureHttpMetadata: "true"
       HoldProof__KeyBase64: "${HOLD_PROOF_KEY_BASE64:?Run scripts/Initialize-Dev-Hold-Proof.ps1 first}"
       ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
       Catalog__BaseUrl: http://catalog-api:8080/
     ports:
       - "127.0.0.1:8088:8080"
     depends_on:
+      keycloak:
+        condition: service_started
       migrate:
         condition: service_completed_successfully
       catalog-api:

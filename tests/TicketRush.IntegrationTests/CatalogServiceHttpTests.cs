@@ -94,12 +94,16 @@ public sealed class CatalogServiceHttpTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseContentRoot(FindContentRoot("TicketRush.Api"));
+            builder.UseEnvironment("Development");
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:BookingDb"] =
                         "Host=127.0.0.1;Port=1;Database=not_running;Username=none;Password=none",
-                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value,
+                    ["Auth:Authority"] = "http://keycloak:8080/realms/ticketrush",
+                    ["Auth:Audience"] = "ticketrush-apis",
+                    ["Auth:AllowInsecureHttpMetadata"] = "true"
                 }));
             builder.ConfigureTestServices(services =>
             {
@@ -119,12 +123,16 @@ public sealed class CatalogServiceHttpTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseContentRoot(FindContentRoot("TicketRush.Api"));
+            builder.UseEnvironment("Development");
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:BookingDb"] =
                         "Host=127.0.0.1;Port=1;Database=not_running;Username=none;Password=none",
-                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value,
+                    ["Auth:Authority"] = "http://keycloak:8080/realms/ticketrush",
+                    ["Auth:Audience"] = "ticketrush-apis",
+                    ["Auth:AllowInsecureHttpMetadata"] = "true"
                 }));
             builder.ConfigureTestServices(services =>
             {

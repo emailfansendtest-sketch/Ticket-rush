@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using TicketRush.BuildingBlocks.Contracts.Security;
 using TicketRush.Domain;
 using TicketRush.Inventory;
@@ -13,12 +14,15 @@ public static class InventoryEndpoints
             Guid eventId, IInventoryService inventory, CancellationToken ct) =>
             await inventory.ListSeatsAsync(eventId, ct));
 
-        endpoints.MapGet("/holds/{holdId:guid}", GetHoldAsync);
+        endpoints.MapGet("/holds/{holdId:guid}", GetHoldAsync).RequireAuthorization();
 
         endpoints.MapPost("/events/{eventId:guid}/holds", async (
             Guid eventId, CreateHoldRequest request, IInventoryService inventory,
             HoldCheckoutProof proof, HttpContext http, CancellationToken ct) =>
         {
+            Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(http.User);
+            if (authenticatedBuyer is null || authenticatedBuyer.Value != request.BuyerId)
+                return Results.Forbid();
             var result = await inventory.HoldAsync(eventId, request.BuyerId,
                 request.IdempotencyKey, request.SeatCodes, ct);
             if (result.Value is { } hold && (result.Kind is ResultKind.Created or ResultKind.Replayed))
@@ -33,19 +37,19 @@ public static class InventoryEndpoints
             }
             return BookingResultMapper.MapResult(result,
                 v => $"/holds/{v.Id:D}?buyerId={v.BuyerId:D}");
-        });
+        }).RequireAuthorization();
 
         return endpoints;
     }
 
     private static async Task<IResult> GetHoldAsync(
-        Guid holdId, [FromQuery] Guid buyerId,
+        Guid holdId, [FromQuery] Guid? buyerId, ClaimsPrincipal user,
         IInventoryService inventory, CancellationToken ct)
     {
-        if (buyerId == Guid.Empty)
-            return Results.BadRequest(new { error = "Provide a buyer ID." });
-
-        var hold = await inventory.GetHoldAsync(holdId, buyerId, ct);
+        Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(user);
+        if (authenticatedBuyer is null || (buyerId.HasValue && buyerId.Value != authenticatedBuyer.Value))
+            return Results.NotFound();
+        var hold = await inventory.GetHoldAsync(holdId, authenticatedBuyer.Value, ct);
         return hold is null ? Results.NotFound() : Results.Ok(hold);
     }
 }

@@ -26,6 +26,34 @@ namespace TicketRush.IntegrationTests;
 public sealed class ApiContractIntegrationTests
 {
     [Fact]
+    public async Task Http_hold_creation_requires_identity_and_rejects_buyer_spoofing()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        await postgres.StartAsync();
+        string connection = postgres.GetConnectionString();
+        await InitializeDatabaseAsync(connection);
+        using var factory = new TicketRushApiFactory(connection);
+        using var client = factory.CreateClient();
+        Guid alice = Guid.NewGuid();
+        Guid bob = Guid.NewGuid();
+        string url = $"/events/{DemoDataSeeder.DemoEventId:D}/holds";
+        var command = new { buyerId = alice, idempotencyKey = "identity-check",
+            seatCodes = new[] { "A-001" } };
+        using var anonymous = await client.PostAsJsonAsync(url, command);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        TestBuyerAuthentication.As(client, bob);
+        using var forged = await client.PostAsJsonAsync(url, command);
+        Assert.Equal(HttpStatusCode.Forbidden, forged.StatusCode);
+        await using (var empty = new BookingDbContext(CreateDbOptions(connection)))
+            Assert.Empty(await empty.Holds.AsNoTracking().ToArrayAsync());
+        TestBuyerAuthentication.As(client, alice);
+        using var created = await client.PostAsJsonAsync(url, command);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        await using var verify = new BookingDbContext(CreateDbOptions(connection));
+        Assert.Single(await verify.Holds.AsNoTracking().ToArrayAsync());
+    }
+
+    [Fact]
     public async Task Http_booking_flow_preserves_routes_status_codes_and_idempotent_replies()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
@@ -55,6 +83,7 @@ public sealed class ApiContractIntegrationTests
         Assert.All(seatsBefore, s => Assert.Equal(SeatStatus.Available, s.Status));
 
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
         string holdUrl = $"/events/{DemoDataSeeder.DemoEventId}/holds";
         var holdCommand = new
         {
@@ -91,7 +120,7 @@ public sealed class ApiContractIntegrationTests
             $"/holds/{createdHold.Id:D}?buyerId={Guid.NewGuid():D}");
         Assert.Equal(HttpStatusCode.NotFound, otherBuyerHoldRead.StatusCode);
         using var missingBuyerHoldRead = await client.GetAsync($"/holds/{createdHold.Id:D}");
-        Assert.Equal(HttpStatusCode.BadRequest, missingBuyerHoldRead.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, missingBuyerHoldRead.StatusCode);
         Assert.Equal(buyer, createdHold.BuyerId);
         Assert.Equal(new[] { "A-001", "A-002" }, createdHold.SeatCodes);
 
@@ -107,14 +136,17 @@ public sealed class ApiContractIntegrationTests
         Assert.Equal(createdHold.ExpiresAtUtc, replayedHold.ExpiresAtUtc);
         Assert.Equal(createdHold.SeatCodes, replayedHold.SeatCodes);
 
+        var otherBuyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, otherBuyer);
         using var otherBuyerResponse = await client.PostAsJsonAsync(holdUrl, new
         {
-            buyerId = Guid.NewGuid(),
+            buyerId = otherBuyer,
             idempotencyKey = "different-buyer-key",
             seatCodes = new[] { "A-001" }
         });
         Assert.Equal(HttpStatusCode.Conflict, otherBuyerResponse.StatusCode);
 
+        TestBuyerAuthentication.As(client, buyer);
         var checkoutCommand = new
         {
             holdId = createdHold.Id,
@@ -137,7 +169,7 @@ public sealed class ApiContractIntegrationTests
             $"/orders/{createdOrder.Id:D}?buyerId={Guid.NewGuid():D}");
         Assert.Equal(HttpStatusCode.NotFound, otherBuyerOrderRead.StatusCode);
         using var missingBuyerOrderRead = await client.GetAsync($"/orders/{createdOrder.Id:D}");
-        Assert.Equal(HttpStatusCode.BadRequest, missingBuyerOrderRead.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, missingBuyerOrderRead.StatusCode);
         Assert.Equal(createdHold.Id, createdOrder.HoldId);
 
         using var orderReplayedResponse = await client.PostAsJsonAsync("/orders", checkoutCommand);
@@ -173,6 +205,7 @@ public sealed class ApiContractIntegrationTests
         using var client = factory.CreateClient();
         string url = $"/events/{DemoDataSeeder.DemoEventId}/holds";
         var buyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, buyer);
 
         using var invalid = await client.PostAsJsonAsync(url, new
         {
@@ -218,6 +251,7 @@ public sealed class ApiContractIntegrationTests
         string seatUrl = $"/events/{DemoDataSeeder.DemoEventId:D}/seats";
         string holdUrl = $"/events/{DemoDataSeeder.DemoEventId:D}/holds";
         Guid firstBuyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, firstBuyer);
 
         using var firstResponse = await client.PostAsJsonAsync(holdUrl, new
         {
@@ -263,9 +297,11 @@ public sealed class ApiContractIntegrationTests
             Assert.Equal(firstHold.Id, stored.HoldId);
         }
 
+        Guid secondBuyer = Guid.NewGuid();
+        TestBuyerAuthentication.As(client, secondBuyer);
         using var secondResponse = await client.PostAsJsonAsync(holdUrl, new
         {
-            buyerId = Guid.NewGuid(),
+            buyerId = secondBuyer,
             idempotencyKey = "expiration-http-b",
             seatCodes = new[] { "A-050" }
         });
@@ -276,6 +312,7 @@ public sealed class ApiContractIntegrationTests
 
         // Replaying an expired idempotent command must not claim that its
         // reservation is still Active, even after another buyer reclaimed it.
+        TestBuyerAuthentication.As(client, firstBuyer);
         using var expiredReplayResponse = await client.PostAsJsonAsync(holdUrl, new
         {
             buyerId = firstBuyer,
@@ -321,6 +358,7 @@ public sealed class ApiContractIntegrationTests
             // Resolve the actual content root explicitly so WebApplicationFactory
             // does not depend on its solution-relative folder convention.
             builder.UseContentRoot(FindApiContentRoot());
+            builder.UseEnvironment("Development");
 
             // Existing booking HTTP tests use an isolated stub Catalog, so the
             // known Phase 1 booking behavior does not depend on an external host.
@@ -329,6 +367,7 @@ public sealed class ApiContractIntegrationTests
             {
                 services.RemoveAll<IEventCatalog>();
                 services.AddSingleton<IEventCatalog>(new FixedDemoEventCatalog());
+                TestBuyerAuthentication.Configure(services);
             });
 
             var clockOverride = testClock;
@@ -347,7 +386,10 @@ public sealed class ApiContractIntegrationTests
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:BookingDb"] = connectionString,
-                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value
+                    ["HoldProof:KeyBase64"] = TestHoldProofKey.Value,
+                    ["Auth:Authority"] = "http://keycloak:8080/realms/ticketrush",
+                    ["Auth:Audience"] = "ticketrush-apis",
+                    ["Auth:AllowInsecureHttpMetadata"] = "true"
                 }));
         }
 

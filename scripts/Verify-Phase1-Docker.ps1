@@ -11,6 +11,9 @@ function Request([string]$method, [string]$path, $data = $null) {
         Uri = "$BaseUrl$path"; Method = $method
         ErrorAction = 'Stop'; UseBasicParsing = $true
     }
+    if (-not [string]::IsNullOrWhiteSpace($script:buyerToken)) {
+        $request.Headers = @{ Authorization = "Bearer $script:buyerToken" }
+    }
     if ($null -ne $data) {
         $request.ContentType = 'application/json'
         $request.Body = ConvertTo-Json -InputObject $data -Depth 6 -Compress
@@ -59,7 +62,8 @@ Require ($seats.Status -eq 200) 'seat-list endpoint failed'
 $free = @($seats.Body | Where-Object { [int]$_.status -eq 0 } | Select-Object -First 2)
 Require ($free.Count -eq 2) 'need two available demo seats; do not reset existing data without a backup'
 $codes = @($free | ForEach-Object { $_.seatCode })
-$buyer = [guid]::NewGuid().ToString('D')
+$buyer = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$script:buyerToken = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username alice
 $holdKey = 'smoke-hold-' + [guid]::NewGuid().ToString('N')
 $orderKey = 'smoke-order-' + [guid]::NewGuid().ToString('N')
 $holdUrl = "/events/$eventId/holds"
@@ -93,10 +97,11 @@ foreach ($code in $codes) {
     Require ($seat.Count -eq 1 -and [int]$seat[0].status -eq 2) "seat $code was not sold"
 }
 $otherBuyerCommand = @{
-    buyerId = [guid]::NewGuid().ToString('D')
+    buyerId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' 
     idempotencyKey = ('smoke-conflict-' + [guid]::NewGuid().ToString('N'))
     seatCodes = @($codes[0])
 }
+$script:buyerToken = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username bob
 $conflict = Request POST $holdUrl $otherBuyerCommand
 Require ($conflict.Status -eq 409) 'sold seat should reject other buyer with 409'
 

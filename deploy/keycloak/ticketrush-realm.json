@@ -1,0 +1,70 @@
+{
+  "realm": "ticketrush",
+  "enabled": true,
+  "sslRequired": "none",
+  "accessTokenLifespan": 900,
+  "clients": [
+    {
+      "clientId": "ticketrush-smoke",
+      "name": "TicketRush local-only test client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [],
+      "webOrigins": [],
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true",
+            "included.custom.audience": "ticketrush-apis"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalOnly#Alice42",
+          "temporary": false
+        }
+      ],
+      "email": "alice@example.invalid",
+      "firstName": "Alice",
+      "lastName": "Demo",
+      "requiredActions": []
+    },
+    {
+      "id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "LocalOnly#Bob42",
+          "temporary": false
+        }
+      ],
+      "email": "bob@example.invalid",
+      "firstName": "Bob",
+      "lastName": "Demo",
+      "requiredActions": []
+    }
+  ]
+}

@@ -21,10 +21,28 @@ $seat = $seats | Where-Object {
 } | Select-Object -First 1
 Require ($null -ne $seat) 'no available demo seats remain'
 
-$buyerId = [guid]::NewGuid().ToString('D')
+$buyerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$attackerBuyer = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+$aliceToken = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username alice
+$bobToken = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username bob
+$authAlice = @{ Authorization = "Bearer $aliceToken" }
+$authBob = @{ Authorization = "Bearer $bobToken" }
+# Without a bearer token, hold admission must be rejected.
+$unauthorized = $false
+try {
+    $null = Invoke-WebRequest -Method Post -Uri "$BookingUrl/events/$eventId/holds" `
+        -ContentType 'application/json' -Body '{}' -UseBasicParsing -ErrorAction Stop
+}
+catch {
+    if ($null -ne $_.Exception.Response) {
+        $unauthorized = ([int]$_.Exception.Response.StatusCode -eq 401)
+    }
+}
+Require $unauthorized 'anonymous hold creation was not rejected with HTTP 401'
+
 $holdKey = 'api-saga-hold-' + [guid]::NewGuid().ToString('N')
 $hold = Invoke-RestMethod -Method Post -Uri "$BookingUrl/events/$eventId/holds" `
-    -ContentType 'application/json' -Body (@{
+    -Headers $authAlice -ContentType 'application/json' -Body (@{
         buyerId = $buyerId; idempotencyKey = $holdKey;
         seatCodes = @($seat.seatCode)
     } | ConvertTo-Json -Depth 5)
@@ -33,7 +51,6 @@ Require (-not [string]::IsNullOrWhiteSpace([string]$hold.holdProof)) 'Booking di
 
 # Negative admission test: knowing the hold ID and providing another buyer ID
 # must NOT reserve the hold in Ordering, even with the correct signed proof.
-$attackerBuyer = [guid]::NewGuid().ToString('D')
 $forgedCommand = @{
     holdId = [string]$hold.id;
     buyerId = $attackerBuyer;
@@ -43,7 +60,7 @@ $forgedCommand = @{
 $forbidden = $false
 try {
     $null = Invoke-WebRequest -Method Post -Uri "$OrderingUrl/checkouts" `
-        -ContentType 'application/json' -Body $forgedCommand -UseBasicParsing -ErrorAction Stop
+        -Headers $authBob -ContentType 'application/json' -Body $forgedCommand -UseBasicParsing -ErrorAction Stop
 }
 catch {
     if ($null -ne $_.Exception.Response) {
@@ -60,7 +77,7 @@ $commandJson = @{
     idempotencyKey = $checkoutKey
 } | ConvertTo-Json -Compress
 $accepted = Invoke-WebRequest -Method Post -Uri "$OrderingUrl/checkouts" `
-    -ContentType 'application/json' -Body $commandJson -UseBasicParsing
+    -Headers $authAlice -ContentType 'application/json' -Body $commandJson -UseBasicParsing
 Require ([int]$accepted.StatusCode -eq 202) "first checkout must return HTTP 202, got $($accepted.StatusCode)"
 $submission = $accepted.Content | ConvertFrom-Json
 Require ($null -ne $submission.orderId) 'HTTP checkout did not return an order ID'
@@ -69,7 +86,7 @@ $location = [string]$accepted.Headers['Location']
 Require ($location -eq "/checkouts/${orderId}?buyerId=$buyerId") 'invalid Location header'
 
 $replay = Invoke-WebRequest -Method Post -Uri "$OrderingUrl/checkouts" `
-    -ContentType 'application/json' -Body $commandJson -UseBasicParsing
+    -Headers $authAlice -ContentType 'application/json' -Body $commandJson -UseBasicParsing
 Require ([int]$replay.StatusCode -eq 200) 'repeated submission must return HTTP 200'
 $replayed = $replay.Content | ConvertFrom-Json
 Require ([string]$replayed.orderId -eq $orderId) 'repeated submission returned a different order'
@@ -77,7 +94,7 @@ Require ([string]$replayed.orderId -eq $orderId) 'repeated submission returned a
 $state = 'Pending'
 $status = $null
 for ($i = 0; $i -lt 90; $i++) {
-    $status = Invoke-RestMethod -Uri "$OrderingUrl$location"
+    $status = Invoke-RestMethod -Uri "$OrderingUrl$location" -Headers $authAlice
     $state = [string]$status.state
     if ($state -eq 'Completed' -or $state -eq 'Failed') { break }
     Start-Sleep -Seconds 1

@@ -33,10 +33,12 @@ $seat = $seats | Where-Object {
     $_.status -eq 0 -or $_.status -eq 'Available'
 } | Select-Object -First 1
 Require ($null -ne $seat) 'no available demo seats remain'
-$buyerId = [guid]::NewGuid().ToString('D')
+$buyerId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+$token = & "$PSScriptRoot/Get-Dev-BuyerToken.ps1" -Username alice
+$authBuyer = @{ Authorization = "Bearer $token" }
 $holdKey = 'inventory-consumer-smoke-' + [guid]::NewGuid().ToString('N')
 $hold = Invoke-RestMethod -Method Post -Uri "$BookingUrl/events/$eventId/holds" `
-    -ContentType 'application/json' -Body (@{
+    -Headers $authBuyer -ContentType 'application/json' -Body (@{
         buyerId = $buyerId; idempotencyKey = $holdKey; seatCodes = @($seat.seatCode)
     } | ConvertTo-Json -Depth 5)
 $orderId = [guid]::NewGuid().ToString('D')
