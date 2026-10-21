@@ -36,6 +36,23 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
                 t.HasCheckConstraint("CK_order_intents_state", "state IN (0,1,2)"));
         });
 
+        modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingResultInboxMessage", b =>
+        {
+            b.Property<Guid>("MessageId").HasColumnType("uuid")
+                .HasColumnName("message_id").ValueGeneratedNever();
+            b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+            b.Property<Guid>("HoldId").HasColumnType("uuid").HasColumnName("hold_id");
+            b.Property<string>("MessageType").IsRequired().HasMaxLength(120)
+                .HasColumnType("character varying(120)").HasColumnName("message_type");
+            b.Property<string>("ReasonCode").HasMaxLength(120)
+                .HasColumnType("character varying(120)").HasColumnName("reason_code");
+            b.Property<DateTimeOffset>("ProcessedAtUtc")
+                .HasColumnType("timestamp with time zone").HasColumnName("processed_at_utc");
+            b.HasKey("MessageId");
+            b.HasIndex("OrderId").IsUnique();
+            b.ToTable("ordering_result_inbox", (string)null);
+        });
+
         modelBuilder.Entity("TicketRush.Ordering.Persistence.OutboxMessage", b =>
         {
             b.Property<Guid>("MessageId").HasColumnType("uuid")
@@ -70,6 +87,13 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
                 .OnDelete(DeleteBehavior.NoAction)
                 .IsRequired();
         });
+        modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingResultInboxMessage", b =>
+        {
+            b.HasOne("TicketRush.Ordering.Persistence.OrderIntent", null)
+                .WithMany().HasForeignKey("OrderId")
+                .OnDelete(DeleteBehavior.NoAction).IsRequired();
+        });
+
 #pragma warning restore 612, 618
     }
 }

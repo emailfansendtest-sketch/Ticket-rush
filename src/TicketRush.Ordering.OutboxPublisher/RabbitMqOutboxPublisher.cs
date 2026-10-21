@@ -15,11 +15,19 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
     public const string Exchange = "ticket.events";
     public const string RoutingKey = "checkout.requested.v1";
     public const string Queue = "ticket.ordering.checkout-requested.v1";
+    public const string InventoryRoutingKey = "inventory.sale-requested.v1";
+    public const string InventoryQueue = "ticket.inventory.sale-requested.v1";
+    public const string InventoryDeadExchange = "ticket.dead";
+    public const string InventoryDeadQueue = "ticket.inventory.sale-requested.dead.v1";
 
     public async Task PublishAsync(OutboxMessage message, CancellationToken ct)
     {
-        if (message.MessageType != "CheckoutRequestedV1")
-            throw new InvalidOperationException($"Unknown outbox message type: {message.MessageType}");
+        var routingKey = message.MessageType switch
+        {
+            "CheckoutRequestedV1" => RoutingKey,
+            "InventorySaleRequestedV1" => InventoryRoutingKey,
+            _ => throw new InvalidOperationException($"Unknown outbox message type: {message.MessageType}")
+        };
 
         var uri = configuration["RabbitMq:Uri"]
             ?? throw new InvalidOperationException("RabbitMq:Uri is required.");
@@ -46,6 +54,30 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
             queue: Queue, exchange: Exchange, routingKey: RoutingKey,
             arguments: null, cancellationToken: ct);
 
+        // Inventory consumer already declares this queue with a dead-letter
+        // policy. Declaration here MUST use identical arguments or RabbitMQ
+        // raises PRECONDITION_FAILED (inequivalent x-arguments).
+        await channel.ExchangeDeclareAsync(
+            InventoryDeadExchange, ExchangeType.Direct,
+            durable: true, autoDelete: false, arguments: null, cancellationToken: ct);
+        await channel.QueueDeclareAsync(
+            InventoryDeadQueue, durable: true, exclusive: false, autoDelete: false,
+            arguments: null, cancellationToken: ct);
+        await channel.QueueBindAsync(
+            InventoryDeadQueue, InventoryDeadExchange, InventoryRoutingKey,
+            arguments: null, cancellationToken: ct);
+        var inventoryArgs = new Dictionary<string, object?>
+        {
+            ["x-dead-letter-exchange"] = InventoryDeadExchange,
+            ["x-dead-letter-routing-key"] = InventoryRoutingKey
+        };
+        await channel.QueueDeclareAsync(
+            InventoryQueue, durable: true, exclusive: false, autoDelete: false,
+            arguments: inventoryArgs, cancellationToken: ct);
+        await channel.QueueBindAsync(
+            InventoryQueue, Exchange, InventoryRoutingKey,
+            arguments: null, cancellationToken: ct);
+
         var properties = new BasicProperties
         {
             MessageId = message.MessageId.ToString("D"),
@@ -57,7 +89,7 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
         // In RabbitMQ.Client 7 tracked confirmations mean await completes only
         // on broker ACK; mandatory unroutable or NACK causes an exception.
         await channel.BasicPublishAsync(
-            exchange: Exchange, routingKey: RoutingKey,
+            exchange: Exchange, routingKey: routingKey,
             mandatory: true, basicProperties: properties,
             body: Encoding.UTF8.GetBytes(message.PayloadJson), cancellationToken: ct);
     }

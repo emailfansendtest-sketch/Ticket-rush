@@ -127,3 +127,7 @@ A separate `TicketRush.Ordering.Persistence` project and `ordering-postgres` dat
 ### Phase 2.3b — RabbitMQ publication
 
 See [Phase 2.3b publisher design and test plan](docs/phase2-outbox-publication.md). A dedicated publisher worker reads the Ordering outbox, waits for broker confirmations, and records retry schedules. The existing Booking API remains synchronous and unchanged.
+
+### Phase 2.3e (in progress; validate locally)
+
+Ordering saga worker wires CheckoutRequested → InventorySaleRequested via Ordering outbox and InventorySaleCommitted/Rejected → Ordering result inbox and Completed/Failed state. The existing HTTP checkout route remains synchronous. See `README-STEP2.3E-APPLY.md`.

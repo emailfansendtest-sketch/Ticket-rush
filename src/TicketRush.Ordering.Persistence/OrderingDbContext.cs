@@ -7,6 +7,7 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
 {
     public DbSet<OrderIntent> OrderIntents => Set<OrderIntent>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+    public DbSet<OrderingResultInboxMessage> ResultInbox => Set<OrderingResultInboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,6 +27,23 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
             b.Property(x => x.RequestedAtUtc).HasColumnName("requested_at_utc");
             b.HasIndex(x => new { x.BuyerId, x.IdempotencyKey }).IsUnique();
             b.HasIndex(x => x.HoldId).IsUnique();
+        });
+
+        modelBuilder.Entity<OrderingResultInboxMessage>(b =>
+        {
+            b.ToTable("ordering_result_inbox");
+            b.HasKey(x => x.MessageId);
+            b.Property(x => x.MessageId).HasColumnName("message_id").ValueGeneratedNever();
+            b.Property(x => x.OrderId).HasColumnName("order_id");
+            b.Property(x => x.HoldId).HasColumnName("hold_id");
+            b.Property(x => x.MessageType).HasColumnName("message_type")
+                .HasMaxLength(120).IsRequired();
+            b.Property(x => x.ReasonCode).HasColumnName("reason_code")
+                .HasMaxLength(120);
+            b.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
+            b.HasIndex(x => x.OrderId).IsUnique();
+            b.HasOne<OrderIntent>().WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<OutboxMessage>(b =>

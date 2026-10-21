@@ -24,7 +24,7 @@ try {
     # A separate probe queue observes the exact message without touching the
     # permanent durable queue used by the future Ordering saga. The publisher
     # declares the permanent queue lazily on its first publication.
-    $queueConfig = @{ durable = $false; auto_delete = $false; arguments = @{} } |
+    $queueConfig = @{ durable = $true; auto_delete = $false; arguments = @{} } |
         ConvertTo-Json -Compress -Depth 4
     Invoke-RestMethod -Method Put -Uri $queueUri -Headers $headers `
         -ContentType 'application/json' -Body $queueConfig | Out-Null

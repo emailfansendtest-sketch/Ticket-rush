@@ -81,6 +81,19 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+  ordering-saga:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Ordering.SagaWorker/Dockerfile
+    environment:
+      ConnectionStrings__OrderingDb: "Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+      RabbitMq__Uri: "amqp://ticketrush:localdevonly@rabbitmq:5672/"
+    depends_on:
+      ordering-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
   catalog-migrate:
     build:
       context: .
