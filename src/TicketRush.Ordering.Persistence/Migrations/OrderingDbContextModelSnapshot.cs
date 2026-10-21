@@ -51,10 +51,14 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
                 .HasColumnType("timestamp with time zone").HasColumnName("published_at_utc");
             b.Property<int>("PublishAttempts").HasColumnType("integer")
                 .HasColumnName("publish_attempts");
+            b.Property<DateTimeOffset?>("NextAttemptAtUtc")
+                .HasColumnType("timestamp with time zone").HasColumnName("next_attempt_at_utc");
+            b.Property<string>("LastError").HasMaxLength(1000)
+                .HasColumnType("character varying(1000)").HasColumnName("last_error");
             b.HasKey("MessageId");
             b.HasIndex("OrderId");
             b.HasIndex("OrderId", "MessageType").IsUnique();
-            b.HasIndex("PublishedAtUtc", "CreatedAtUtc");
+            b.HasIndex("PublishedAtUtc", "NextAttemptAtUtc", "CreatedAtUtc");
             b.ToTable("outbox_messages", (string)null);
         });
 

@@ -41,7 +41,9 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
             b.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
             b.Property(x => x.PublishedAtUtc).HasColumnName("published_at_utc");
             b.Property(x => x.PublishAttempts).HasColumnName("publish_attempts");
-            b.HasIndex(x => new { x.PublishedAtUtc, x.CreatedAtUtc });
+            b.Property(x => x.NextAttemptAtUtc).HasColumnName("next_attempt_at_utc");
+            b.Property(x => x.LastError).HasColumnName("last_error").HasMaxLength(1000);
+            b.HasIndex(x => new { x.PublishedAtUtc, x.NextAttemptAtUtc, x.CreatedAtUtc });
             b.HasIndex(x => x.OrderId);
             b.HasIndex(x => new { x.OrderId, x.MessageType }).IsUnique();
             b.HasOne<OrderIntent>().WithMany().HasForeignKey(x => x.OrderId)

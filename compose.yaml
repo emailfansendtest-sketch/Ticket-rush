@@ -49,17 +49,44 @@ services:
       context: .
       dockerfile: src/TicketRush.Ordering.DbMigrator/Dockerfile
     environment:
-      ConnectionStrings__OrderingDb: "Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+      ConnectionStrings__OrderingDb: Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
     depends_on:
       ordering-postgres:
         condition: service_healthy
     restart: "no"
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ticketrush
+      RABBITMQ_DEFAULT_PASS: localdevonly
+    ports:
+      - "127.0.0.1:15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - ticket_rabbitmq:/var/lib/rabbitmq
+  ordering-outbox:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Ordering.OutboxPublisher/Dockerfile
+    environment:
+      ConnectionStrings__OrderingDb: "Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+      RabbitMq__Uri: "amqp://ticketrush:localdevonly@rabbitmq:5672/"
+    depends_on:
+      ordering-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
   catalog-migrate:
     build:
       context: .
       dockerfile: src/TicketRush.Catalog.DbMigrator/Dockerfile
     environment:
-      ConnectionStrings__CatalogDb: Host=catalog-postgres;Port=5432;Database=ticketrush_catalog;Username=ticketrush;Password=localdevonly
+      ConnectionStrings__CatalogDb: Host=catalog-postgres;Port=5432;Database=ticketrush_catalog;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
       SEED_DEMO_DATA: "true"
     depends_on:
       catalog-postgres:
@@ -71,7 +98,7 @@ services:
       dockerfile: src/TicketRush.Catalog.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__CatalogDb: Host=catalog-postgres;Port=5432;Database=ticketrush_catalog;Username=ticketrush;Password=localdevonly
+      ConnectionStrings__CatalogDb: Host=catalog-postgres;Port=5432;Database=ticketrush_catalog;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
     ports:
       - "127.0.0.1:8090:8080"
     depends_on:
@@ -82,7 +109,7 @@ services:
       context: .
       dockerfile: src/TicketRush.DbMigrator/Dockerfile
     environment:
-      ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly
+      ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
       SEED_DEMO_DATA: "true"
     depends_on:
       postgres:
@@ -94,7 +121,7 @@ services:
       dockerfile: src/TicketRush.Api/Dockerfile
     environment:
       ASPNETCORE_URLS: http://+:8080
-      ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly
+      ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
       Catalog__BaseUrl: http://catalog-api:8080/
     ports:
       - "127.0.0.1:8088:8080"
@@ -107,3 +134,4 @@ volumes:
   ticket_pg:
   ticket_catalog_pg:
   ticket_ordering_pg:
+  ticket_rabbitmq:

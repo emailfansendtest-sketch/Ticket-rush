@@ -229,7 +229,9 @@ public sealed class OrderingIntakeIntegrationTests
         var options = await InitializeAsync(postgres);
         await using var db = new OrderingDbContext(options);
         await db.Database.MigrateAsync();
-        Assert.Single(await db.Database.GetAppliedMigrationsAsync());
+        var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
+        Assert.Contains(appliedMigrations, x => x.EndsWith("_OrderIntakeInitialCreate", StringComparison.Ordinal));
+        Assert.Contains(appliedMigrations, x => x.EndsWith("_OutboxDeliveryScheduling", StringComparison.Ordinal));
         Assert.Empty(await db.OrderIntents.AsNoTracking().ToArrayAsync());
         Assert.Empty(await db.OutboxMessages.AsNoTracking().ToArrayAsync());
 

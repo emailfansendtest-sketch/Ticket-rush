@@ -1,6 +1,6 @@
 # TicketRush — flash-sale seat booking (.NET 10)
 
-> **Status: Phase 2 Step 2.3a Ordering durable-intake foundation (local validation pending).** The validated Step 2.2 baseline has 32 passing tests and a passing Docker Compose smoke test. This increment adds an independent Ordering database and atomic Pending-order/outbox writes; the existing Booking HTTP checkout still uses the Phase 1 synchronous transaction.
+> **Status: Phase 2 Step 2.3b Ordering RabbitMQ outbox publication (local validation pending).** The validated Step 2.2 baseline has 32 passing tests and a passing Docker Compose smoke test. This increment adds an independent Ordering database and atomic Pending-order/outbox writes; the existing Booking HTTP checkout still uses the Phase 1 synchronous transaction.
 
 A booking system that evolves from a **modular monolith** into distributed, horizontally scalable services. Its core invariant is: **a seat is never sold twice**. PostgreSQL is the source of truth; later Redis caching/admission does not change this.
 
@@ -122,3 +122,8 @@ Catalog forwarding behavior: when Catalog is unavailable, Booking `GET /events` 
 ### Phase 2.3a — Ordering durable intake foundation
 
 A separate `TicketRush.Ordering.Persistence` project and `ordering-postgres` database now store Pending checkout intents and `CheckoutRequestedV1` outbox messages atomically. This path is not wired to the existing synchronous `/orders` endpoint yet. See [phase2-ordering-intake](docs/phase2-ordering-intake.md).
+
+
+### Phase 2.3b — RabbitMQ publication
+
+See [Phase 2.3b publisher design and test plan](docs/phase2-outbox-publication.md). A dedicated publisher worker reads the Ordering outbox, waits for broker confirmations, and records retry schedules. The existing Booking API remains synchronous and unchanged.

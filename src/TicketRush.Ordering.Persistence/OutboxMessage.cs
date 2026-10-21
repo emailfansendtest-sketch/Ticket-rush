@@ -1,8 +1,8 @@
 namespace TicketRush.Ordering.Persistence;
 
 /// <summary>
-/// Serialized committed fact. No publisher is wired in this step; the row must
-/// survive process restarts for a future at-least-once dispatcher to deliver.
+/// Serialized committed fact delivered by the outbox worker using at-least-once
+/// publication. Stable MessageId supports downstream inbox deduplication.
 /// </summary>
 public sealed class OutboxMessage
 {
@@ -13,4 +13,6 @@ public sealed class OutboxMessage
     public DateTimeOffset CreatedAtUtc { get; set; }
     public DateTimeOffset? PublishedAtUtc { get; set; }
     public int PublishAttempts { get; set; }
+    public DateTimeOffset? NextAttemptAtUtc { get; set; }
+    public string? LastError { get; set; }
 }
