@@ -50,8 +50,14 @@ namespace TicketRush.Infrastructure.Migrations
                     b.Property<string>("PayloadJson").IsRequired().HasColumnType("jsonb").HasColumnName("payload_json");
                     b.Property<DateTimeOffset>("CreatedAtUtc").HasColumnType("timestamp with time zone").HasColumnName("created_at_utc");
                     b.Property<DateTimeOffset?>("PublishedAtUtc").HasColumnType("timestamp with time zone").HasColumnName("published_at_utc");
+                    b.Property<int>("PublishAttempts").HasColumnType("integer").HasColumnName("publish_attempts");
+                    b.Property<DateTimeOffset?>("NextAttemptAtUtc").HasColumnType("timestamp with time zone").HasColumnName("next_attempt_at_utc");
+                    b.Property<string>("LastError").HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)").HasColumnName("last_error");
                     b.HasKey("MessageId");
                     b.HasIndex("OrderId").IsUnique();
+                    b.HasIndex("PublishedAtUtc", "NextAttemptAtUtc", "CreatedAtUtc")
+                        .HasDatabaseName("IX_inventory_result_outbox_delivery");
                     b.ToTable("inventory_result_outbox", (string)null);
                 });
 

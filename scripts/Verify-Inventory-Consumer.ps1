@@ -27,8 +27,8 @@ function Post-Command($message, $auth) {
     Require ($reply.routed -eq $true) 'command was not routed to Inventory queue'
 }
 
+# Windows PowerShell can keep a JSON array nested when Invoke-RestMethod is wrapped in @(...).
 $seats = Invoke-RestMethod -Uri "$BookingUrl/events/$eventId/seats"
-
 $seat = $seats | Where-Object {
     $_.status -eq 0 -or $_.status -eq 'Available'
 } | Select-Object -First 1
