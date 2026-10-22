@@ -236,6 +236,24 @@ services:
       postgres:
         condition: service_healthy
     restart: "no"
+  inventory-api:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Inventory.Api/Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      Auth__Authority: http://keycloak:8080/realms/ticketrush
+      Auth__Audience: ticketrush-apis
+      Auth__AllowInsecureHttpMetadata: "true"
+      ConnectionStrings__BookingDb: "Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+    # Deliberately no host port; the Booking API is the browser-facing gateway.
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      keycloak:
+        condition: service_started
+    restart: unless-stopped
   inventory-consumer:
     build:
       context: .
@@ -275,6 +293,7 @@ services:
       HoldProof__KeyBase64: "${HOLD_PROOF_KEY_BASE64:?Run scripts/Initialize-Dev-Hold-Proof.ps1 first}"
       ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
       Catalog__BaseUrl: http://catalog-api:8080/
+      Inventory__BaseUrl: http://inventory-api:8080/
     ports:
       - "127.0.0.1:8088:8080"
     depends_on:
@@ -283,6 +302,8 @@ services:
       migrate:
         condition: service_completed_successfully
       catalog-api:
+        condition: service_started
+      inventory-api:
         condition: service_started
 volumes:
   ticket_pg:

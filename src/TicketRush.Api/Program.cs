@@ -6,6 +6,7 @@ using TicketRush.Catalog;
 using TicketRush.Infrastructure;
 using TicketRush.Inventory;
 using TicketRush.Ordering;
+using TicketRush.Api;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddDbContext<BookingDbContext>(options =>
@@ -19,10 +20,25 @@ builder.Services.AddHttpClient<IEventCatalog, HttpEventCatalog>(client =>
         ?? "http://localhost:8090/");
     client.Timeout = TimeSpan.FromSeconds(10);
 });
-// Two Inventory ports resolve to ONE scoped instance and shared EF context.
+// The legacy synchronous /orders path still needs a shared local transaction.
+// The public Inventory read/hold operations are proxied to the independent host
+// when configured. Without Inventory:BaseUrl (existing in-process tests), retain
+// the Phase-1 implementation to avoid changing existing test contract behavior.
 builder.Services.AddScoped<InventoryService>();
-builder.Services.AddScoped<IInventoryService>(sp => sp.GetRequiredService<InventoryService>());
 builder.Services.AddScoped<IInventoryCheckout>(sp => sp.GetRequiredService<InventoryService>());
+if (builder.Configuration["Inventory:BaseUrl"] is { Length: > 0 } inventoryBaseUrl)
+{
+    builder.Services.AddHttpContextAccessor();
+    builder.Services.AddHttpClient<IInventoryService, HttpInventoryService>(client =>
+    {
+        client.BaseAddress = new Uri(inventoryBaseUrl);
+        client.Timeout = TimeSpan.FromSeconds(15);
+    });
+}
+else
+{
+    builder.Services.AddScoped<IInventoryService>(sp => sp.GetRequiredService<InventoryService>());
+}
 builder.Services.AddScoped<IOrderingService, OrderingService>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<HoldCheckoutProof>(services => new HoldCheckoutProof(

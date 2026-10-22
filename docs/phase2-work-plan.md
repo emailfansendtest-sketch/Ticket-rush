@@ -51,3 +51,15 @@ The async sale command now persists Inventory sale evidence in `inventory_sales`
 instead of a duplicate legacy `TicketOrder` row. This is a preparatory ownership
 change **inside the existing shared Booking database**, not a separate Inventory
 DB yet. `README-STEP2.3O1-APPLY.md` covers migration, validation and the next cutover.
+
+### Phase 2.3o.2a — Inventory HTTP boundary (pending local validation)
+
+- [ ] Build/test `TicketRush.Inventory.Api` and the Booking HTTP adapter.
+- [ ] Validate cross-service JWT identity and hold proof on the Booking API.
+- [ ] Run `Verify-Inventory-Api-Bridge.ps1` and all downstream saga/compensation/notification regressions.
+- [ ] Confirm Booking API read/hold requests return 503 during an Inventory API outage, not locally persisted responses.
+
+**Only a service boundary has moved:** database tables, Inventory RabbitMQ workers, and
+legacy synchronous `/orders` still share Booking PostgreSQL. The physical
+Inventory database extraction is Phase 2.3o.2b, **not complete**.
+

@@ -12,7 +12,17 @@ public static class InventoryEndpoints
     {
         endpoints.MapGet("/events/{eventId:guid}/seats", async (
             Guid eventId, IInventoryService inventory, CancellationToken ct) =>
-            await inventory.ListSeatsAsync(eventId, ct));
+        {
+            try { return Results.Ok(await inventory.ListSeatsAsync(eventId, ct)); }
+            catch (HttpRequestException)
+            {
+                return Results.Problem(title: "Inventory service unavailable", statusCode: 503);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return Results.Problem(title: "Inventory service timed out", statusCode: 504);
+            }
+        });
 
         endpoints.MapGet("/holds/{holdId:guid}", GetHoldAsync).RequireAuthorization();
 
@@ -23,8 +33,20 @@ public static class InventoryEndpoints
             Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(http.User);
             if (authenticatedBuyer is null || authenticatedBuyer.Value != request.BuyerId)
                 return Results.Forbid();
-            var result = await inventory.HoldAsync(eventId, request.BuyerId,
-                request.IdempotencyKey, request.SeatCodes, ct);
+            OperationResult<HoldView> result;
+            try
+            {
+                result = await inventory.HoldAsync(eventId, request.BuyerId,
+                    request.IdempotencyKey, request.SeatCodes, ct);
+            }
+            catch (HttpRequestException)
+            {
+                return Results.Problem(title: "Inventory service unavailable", statusCode: 503);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return Results.Problem(title: "Inventory service timed out", statusCode: 504);
+            }
             if (result.Value is { } hold && (result.Kind is ResultKind.Created or ResultKind.Replayed))
             {
                 http.Response.Headers.CacheControl = "no-store";
@@ -49,8 +71,19 @@ public static class InventoryEndpoints
         Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(user);
         if (authenticatedBuyer is null || (buyerId.HasValue && buyerId.Value != authenticatedBuyer.Value))
             return Results.NotFound();
-        var hold = await inventory.GetHoldAsync(holdId, authenticatedBuyer.Value, ct);
-        return hold is null ? Results.NotFound() : Results.Ok(hold);
+        try
+        {
+            var hold = await inventory.GetHoldAsync(holdId, authenticatedBuyer.Value, ct);
+            return hold is null ? Results.NotFound() : Results.Ok(hold);
+        }
+        catch (HttpRequestException)
+        {
+            return Results.Problem(title: "Inventory service unavailable", statusCode: 503);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return Results.Problem(title: "Inventory service timed out", statusCode: 504);
+        }
     }
 }
 
