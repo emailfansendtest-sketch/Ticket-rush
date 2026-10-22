@@ -67,7 +67,7 @@ public sealed class InventoryApiIntegrationTests
             builder.ConfigureAppConfiguration((_, configuration) =>
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
-                    ["ConnectionStrings:BookingDb"] = connectionString,
+                    ["ConnectionStrings:InventoryDb"] = connectionString,
                     ["Auth:Authority"] = "http://keycloak:8080/realms/ticketrush",
                     ["Auth:Audience"] = "ticketrush-apis",
                     ["Auth:AllowInsecureHttpMetadata"] = "true"

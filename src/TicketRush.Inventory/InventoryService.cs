@@ -1,3 +1,4 @@
+using TicketRush.Inventory.Persistence;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -14,7 +15,7 @@ namespace TicketRush.Inventory;
 /// Owns seat availability and atomic hold creation. Uses PostgreSQL transactions,
 /// deterministic row locks, and persisted idempotency keys, not process-local state.
 /// </summary>
-public sealed class InventoryService(BookingDbContext db, TimeProvider clock) : IInventoryService, IInventoryCheckout
+public sealed class InventoryService(InventoryDbContext db, TimeProvider clock) : IInventoryService, IInventoryCheckout
 {
     private static readonly TimeSpan HoldDuration = TimeSpan.FromMinutes(10);
 

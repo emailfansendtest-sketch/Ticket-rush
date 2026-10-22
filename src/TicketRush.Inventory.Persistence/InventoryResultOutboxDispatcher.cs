@@ -1,3 +1,4 @@
+using TicketRush.Inventory.Persistence;
 using Microsoft.EntityFrameworkCore;
 
 namespace TicketRush.Infrastructure;
@@ -10,7 +11,7 @@ public enum InventoryResultDispatchOutcome { Empty, Published, Deferred }
 /// delivery: a crash between broker confirm and DB commit can publish again.
 /// </summary>
 public sealed class InventoryResultOutboxDispatcher(
-    BookingDbContext db, IInventoryResultPublisher publisher, TimeProvider clock)
+    InventoryDbContext db, IInventoryResultPublisher publisher, TimeProvider clock)
 {
     public async Task<InventoryResultDispatchOutcome> DispatchNextAsync(CancellationToken ct)
     {

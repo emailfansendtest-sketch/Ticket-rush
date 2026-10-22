@@ -25,6 +25,10 @@ if (registerLegacyServices)
         options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDb")
             ?? throw new InvalidOperationException(
                 "Legacy checkout requires ConnectionStrings:BookingDb.")));
+    // In legacy mode, reuse the SAME scoped context instance for Inventory and Ordering.
+    // Never register a second InventoryDbContext against the legacy database.
+    builder.Services.AddScoped<TicketRush.Inventory.Persistence.InventoryDbContext>(
+        sp => sp.GetRequiredService<BookingDbContext>());
     builder.Services.AddScoped<InventoryService>();
     builder.Services.AddScoped<IInventoryCheckout>(sp => sp.GetRequiredService<InventoryService>());
     builder.Services.AddScoped<IOrderingService, OrderingService>();

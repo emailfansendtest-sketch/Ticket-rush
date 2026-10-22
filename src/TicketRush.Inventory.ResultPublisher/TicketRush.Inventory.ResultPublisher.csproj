@@ -3,7 +3,7 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
+    <ProjectReference Include="../TicketRush.Inventory.Persistence/TicketRush.Inventory.Persistence.csproj" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>

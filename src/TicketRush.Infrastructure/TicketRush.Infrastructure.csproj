@@ -1,11 +1,30 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../TicketRush.Domain/TicketRush.Domain.csproj" />
+    <ProjectReference Include="../TicketRush.Inventory.Persistence/TicketRush.Inventory.Persistence.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+  </ItemGroup>
+  <!-- Phase 2.3o.2c overlay compatibility: these files moved to Inventory.Persistence.
+       Remove old physical copies with Apply-Phase2.3o.2c.ps1 after extraction. -->
+  <ItemGroup>
+    <Compile Remove="InventoryInboxMessage.cs" />
+    <Compile Remove="InventoryResultOutbox.cs" />
+    <Compile Remove="InventorySaleRecord.cs" />
+    <Compile Remove="InventoryResultOutboxDispatcher.cs" />
+    <Compile Remove="IInventoryResultPublisher.cs" />
+    <Compile Remove="EntitySchemas\EfEntitySchema.cs" />
+    <Compile Remove="EntitySchemas\EntitySchemaExtensions.cs" />
+    <Compile Remove="EntitySchemas\IEntitySchema.cs" />
+    <Compile Remove="DbConfigurations\InventoryInboxConfiguration.cs" />
+    <Compile Remove="DbConfigurations\InventoryResultOutboxConfiguration.cs" />
+    <Compile Remove="DbConfigurations\InventorySaleRecordConfiguration.cs" />
+    <Compile Remove="DbConfigurations\SeatAllocationConfiguration.cs" />
+    <Compile Remove="DbConfigurations\SeatHoldConfiguration.cs" />
+    <Compile Remove="DbConfigurations\TicketEventConfiguration.cs" />
   </ItemGroup>
 </Project>

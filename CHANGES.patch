@@ -1,0 +1,45 @@
+--- a/src/TicketRush.Api/Program.cs
++++ b/src/TicketRush.Api/Program.cs
+@@ -25,6 +25,10 @@
+         options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDb")
+             ?? throw new InvalidOperationException(
+                 "Legacy checkout requires ConnectionStrings:BookingDb.")));
++    // In legacy mode, reuse the SAME scoped context instance for Inventory and Ordering.
++    // Never register a second InventoryDbContext against the legacy database.
++    builder.Services.AddScoped<TicketRush.Inventory.Persistence.InventoryDbContext>(
++        sp => sp.GetRequiredService<BookingDbContext>());
+     builder.Services.AddScoped<InventoryService>();
+     builder.Services.AddScoped<IInventoryCheckout>(sp => sp.GetRequiredService<InventoryService>());
+     builder.Services.AddScoped<IOrderingService, OrderingService>();
+--- a/tests/TicketRush.IntegrationTests/ApiContractIntegrationTests.cs
++++ b/tests/TicketRush.IntegrationTests/ApiContractIntegrationTests.cs
+@@ -371,6 +371,12 @@
+                 // must opt into its legacy PostgreSQL services explicitly.
+                 services.AddDbContext<BookingDbContext>(options =>
+                     options.UseNpgsql(connectionString));
++                // WebApplicationFactory applies its test settings too late for the
++                // Program.cs legacy-mode registrations, so explicitly alias the
++                // derived BookingDbContext as InventoryDbContext in this scope.
++                // Sharing the SAME instance preserves the Phase-1 checkout transaction.
++                services.AddScoped<TicketRush.Inventory.Persistence.InventoryDbContext>(
++                    sp => sp.GetRequiredService<BookingDbContext>());
+                 services.AddScoped<InventoryService>();
+                 services.AddScoped<IInventoryCheckout>(
+                     sp => sp.GetRequiredService<InventoryService>());
+--- a/tests/TicketRush.IntegrationTests/InventoryDatabaseSeparationTests.cs
++++ b/tests/TicketRush.IntegrationTests/InventoryDatabaseSeparationTests.cs
+@@ -27,9 +27,12 @@
+         Assert.Empty(await ctx.Database.GetPendingMigrationsAsync());
+         await using var db = new NpgsqlConnection(pg.GetConnectionString());
+         await db.OpenAsync();
+-        await using var command = new NpgsqlCommand("SELECT to_regclass('public.orders')", db);
++        // to_regclass(...) returns PostgreSQL regclass, which Npgsql cannot read as
++        // System.Object. Return a boolean from SQL instead.
++        await using var command = new NpgsqlCommand(
++            "SELECT to_regclass('public.orders') IS NULL", db);
+         var missingOrders = await command.ExecuteScalarAsync();
+-        Assert.True(missingOrders is null or DBNull);
++        Assert.True(Assert.IsType<bool>(missingOrders));
+         Assert.Empty(await ctx.Events.ToListAsync());
+     }
+ 

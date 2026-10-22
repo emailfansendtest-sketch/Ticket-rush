@@ -51,7 +51,7 @@ INSERT INTO inventory_result_outbox (
 );
 COMMIT;
 "@
-    $sql | docker compose exec -T postgres psql -X -U ticketrush -d ticketrush -v ON_ERROR_STOP=1 | Out-Null
+    $sql | docker compose exec -T inventory-postgres psql -X -U ticketrush -d ticketrush_inventory -v ON_ERROR_STOP=1 | Out-Null
     Require ($LASTEXITCODE -eq 0) 'could not insert synthetic result into PostgreSQL'
 
     # Observe the actual broker message on an otherwise empty temporary queue.
@@ -83,7 +83,7 @@ COMMIT;
     $sqlStatus = "SELECT coalesce(published_at_utc::text, '') FROM inventory_result_outbox WHERE message_id = '$messageId';"
     $published = ''
     for ($i = 0; $i -lt 15; $i++) {
-        $published = (docker compose exec -T postgres psql -X -U ticketrush -d ticketrush -At -v ON_ERROR_STOP=1 -c $sqlStatus) -join "`n"
+        $published = (docker compose exec -T inventory-postgres psql -X -U ticketrush -d ticketrush_inventory -At -v ON_ERROR_STOP=1 -c $sqlStatus) -join "`n"
         Require ($LASTEXITCODE -eq 0) 'could not verify published status'
         if (-not [string]::IsNullOrWhiteSpace($published)) { break }
         Start-Sleep -Seconds 1

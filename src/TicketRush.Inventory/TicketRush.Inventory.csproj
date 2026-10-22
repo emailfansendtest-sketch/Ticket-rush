@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
-    <!-- As with Catalog in Phase 1, the module owns its behavior while EF persistence stays shared. -->
-    <ProjectReference Include="../TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
+    <!-- Inventory behavior depends on Inventory-owned persistence, not the legacy Booking DB. -->
+    <ProjectReference Include="../TicketRush.Inventory.Persistence/TicketRush.Inventory.Persistence.csproj" />
     <ProjectReference Include="../TicketRush.BuildingBlocks.Contracts/TicketRush.BuildingBlocks.Contracts.csproj" />
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
     <!-- Inventory directly uses Npgsql exception types for unique-constraint handling. -->

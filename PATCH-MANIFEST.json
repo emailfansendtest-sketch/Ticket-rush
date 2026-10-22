@@ -1,0 +1,10 @@
+{
+  "phase": "Phase 2.3o.2c test fix",
+  "baseline": "Phase 2.3o.2c source overlay",
+  "modified": [
+    "src/TicketRush.Api/Program.cs",
+    "tests/TicketRush.IntegrationTests/ApiContractIntegrationTests.cs",
+    "tests/TicketRush.IntegrationTests/InventoryDatabaseSeparationTests.cs"
+  ],
+  "database_migration": false
+}

@@ -1,3 +1,4 @@
+using TicketRush.Inventory.Persistence;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
@@ -10,12 +11,12 @@ namespace TicketRush.Inventory;
 public enum InventoryCommandOutcome { Processed, Duplicate }
 
 /// <summary>
-/// Handles one sale command entirely within the transitional Booking PostgreSQL database.
+/// Handles one sale command entirely within the independently owned Inventory PostgreSQL database.
 /// Inbox, seat/hold changes, Inventory-owned sale evidence and resulting outbox message
-/// commit atomically. The legacy Booking database is retained until the next increment.
+/// commit atomically. The legacy Booking database is not accessed by this service.
 /// </summary>
 public sealed class InventorySaleCommandProcessor(
-    BookingDbContext db, IInventoryCheckout inventory, TimeProvider clock)
+    InventoryDbContext db, IInventoryCheckout inventory, TimeProvider clock)
 {
     public async Task<InventoryCommandOutcome> ProcessAsync(
         InventorySaleRequestedV1 command, CancellationToken ct)

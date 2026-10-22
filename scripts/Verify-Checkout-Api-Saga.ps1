@@ -118,8 +118,8 @@ $paymentPersisted = (docker compose exec -T payment-postgres psql -X -U ticketru
     "SELECT (SELECT count(*) FROM payment_receipts WHERE order_id = '$orderId' AND result_type = 'PaymentAuthorizedV1'), (SELECT count(*) FROM payment_outbox WHERE order_id = '$orderId' AND published_at_utc IS NOT NULL);") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not verify Payment database'
 Require ($paymentPersisted.Trim() -eq '1,1') "incorrect durable Payment records: $paymentPersisted"
-$inventoryCounts = (docker compose exec -T postgres psql -X -U ticketrush `
-    -d ticketrush -At -F ',' -v ON_ERROR_STOP=1 -c `
+$inventoryCounts = (docker compose exec -T inventory-postgres psql -X -U ticketrush `
+    -d ticketrush_inventory -At -F ',' -v ON_ERROR_STOP=1 -c `
     "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_sales WHERE order_id = '$orderId');") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not verify Inventory database'
 Require ($inventoryCounts.Trim() -eq '1,1,1') "unexpected Inventory records: $inventoryCounts"

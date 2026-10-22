@@ -1,30 +1,20 @@
 using Microsoft.EntityFrameworkCore;
-
 using TicketRush.Domain;
+using TicketRush.Inventory.Persistence;
 using TicketRush.Infrastructure.DbConfigurations;
 
 namespace TicketRush.Infrastructure;
 
-public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options) : DbContext(options)
+/// <summary>Legacy-only compatibility DbContext, retaining the shared-transaction checkout tests.
+/// Not used in the distributed Inventory deployments.</summary>
+public sealed class BookingDbContext(DbContextOptions<BookingDbContext> options)
+    : InventoryDbContext(options)
 {
-    public DbSet<TicketEvent> Events => Set<TicketEvent>();
-    public DbSet<SeatAllocation> Seats => Set<SeatAllocation>();
-    public DbSet<SeatHold> Holds => Set<SeatHold>();
     public DbSet<TicketOrder> Orders => Set<TicketOrder>();
-    public DbSet<InventorySaleRecord> InventorySales => Set<InventorySaleRecord>();
-    public DbSet<InventoryInboxMessage> InventoryInbox => Set<InventoryInboxMessage>();
-    public DbSet<InventoryResultOutbox> InventoryResultOutbox => Set<InventoryResultOutbox>();
 
-    protected override void OnModelCreating( ModelBuilder modelBuilder )
+    protected override void OnModelCreating(ModelBuilder builder)
     {
-        base.OnModelCreating( modelBuilder );
-
-        modelBuilder.ApplyConfiguration( new TicketEventConfiguration() );
-        modelBuilder.ApplyConfiguration( new SeatAllocationConfiguration() );
-        modelBuilder.ApplyConfiguration( new SeatHoldConfiguration() );
-        modelBuilder.ApplyConfiguration( new TicketOrderConfiguration() );
-        modelBuilder.ApplyConfiguration(new InventorySaleRecordConfiguration());
-        modelBuilder.ApplyConfiguration(new InventoryInboxConfiguration());
-        modelBuilder.ApplyConfiguration(new InventoryResultOutboxConfiguration());
+        base.OnModelCreating(builder);
+        builder.ApplyConfiguration(new TicketOrderConfiguration());
     }
 }

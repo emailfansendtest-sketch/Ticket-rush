@@ -1,3 +1,5 @@
+> **Phase 2.3o.2c:** Independent Inventory database cutover. Existing deployments MUST follow [`README-STEP2.3O2C-APPLY.md`](README-STEP2.3O2C-APPLY.md) before starting services.
+
 > **Phase 2.3m**: simulated Payment authorization void compensation is implemented as a pending local-validation increment. See [README-STEP2.3M-APPLY.md](README-STEP2.3M-APPLY.md).
 
 > Phase 2.3h: missing Inventory results can now be recovered by replaying the original sale command (see `README-STEP2.3H-APPLY.md`).

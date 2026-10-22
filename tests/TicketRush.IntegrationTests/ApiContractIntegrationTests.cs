@@ -371,6 +371,12 @@ public sealed class ApiContractIntegrationTests
                 // must opt into its legacy PostgreSQL services explicitly.
                 services.AddDbContext<BookingDbContext>(options =>
                     options.UseNpgsql(connectionString));
+                // WebApplicationFactory applies its test settings too late for the
+                // Program.cs legacy-mode registrations, so explicitly alias the
+                // derived BookingDbContext as InventoryDbContext in this scope.
+                // Sharing the SAME instance preserves the Phase-1 checkout transaction.
+                services.AddScoped<TicketRush.Inventory.Persistence.InventoryDbContext>(
+                    sp => sp.GetRequiredService<BookingDbContext>());
                 services.AddScoped<InventoryService>();
                 services.AddScoped<IInventoryCheckout>(
                     sp => sp.GetRequiredService<InventoryService>());

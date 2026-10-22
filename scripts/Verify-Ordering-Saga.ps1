@@ -68,8 +68,8 @@ $orderingCounts = (docker compose exec -T ordering-postgres psql -X -U ticketrus
     "SELECT (SELECT count(*) FROM outbox_messages WHERE order_id = '$orderId' AND message_type = 'InventorySaleRequestedV1'), (SELECT count(*) FROM ordering_result_inbox WHERE order_id = '$orderId' AND message_type = 'InventorySaleCommittedV1');") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not count Ordering saga records'
 Require ($orderingCounts.Trim() -eq '1,1') "Ordering expected one command and one result: $orderingCounts"
-$inventoryCounts = (docker compose exec -T postgres psql -X -U ticketrush `
-    -d ticketrush -At -F ',' -v ON_ERROR_STOP=1 -c `
+$inventoryCounts = (docker compose exec -T inventory-postgres psql -X -U ticketrush `
+    -d ticketrush_inventory -At -F ',' -v ON_ERROR_STOP=1 -c `
     "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_sales WHERE order_id = '$orderId');") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not count Inventory transaction records'
 Require ($inventoryCounts.Trim() -eq '1,1,1') "Inventory expected one inbox, result and sale: $inventoryCounts"

@@ -5,6 +5,9 @@
   <Project Path="src/TicketRush.Catalog.Storage/TicketRush.Catalog.Storage.csproj" />
   <Project Path="src/TicketRush.Catalog.Api/TicketRush.Catalog.Api.csproj" />
   <Project Path="src/TicketRush.Catalog.DbMigrator/TicketRush.Catalog.DbMigrator.csproj" />
+  <Project Path="src/TicketRush.Inventory.Persistence/TicketRush.Inventory.Persistence.csproj" />
+  <Project Path="src/TicketRush.Inventory.DbMigrator/TicketRush.Inventory.DbMigrator.csproj" />
+  <Project Path="src/TicketRush.Inventory.DataCutover/TicketRush.Inventory.DataCutover.csproj" />
   <Project Path="src/TicketRush.Inventory/TicketRush.Inventory.csproj" />
   <Project Path="src/TicketRush.Inventory.Api/TicketRush.Inventory.Api.csproj" />
   <Project Path="src/TicketRush.Ordering/TicketRush.Ordering.csproj" />

@@ -1,3 +1,4 @@
+using TicketRush.Inventory.Persistence;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using TicketRush.BuildingBlocks.Contracts.Security;
@@ -8,17 +9,16 @@ using TicketRush.Inventory;
 namespace TicketRush.Inventory.Api;
 
 /// <summary>
-/// HTTP boundary for Inventory. Phase 2.3o.2a keeps the existing Booking database
-/// while removing Inventory reads/hold writes from the public Booking API process.
+/// HTTP boundary for Inventory. Phase 2.3o.2c owns its Inventory database and never opens the legacy Booking DB.
 /// </summary>
 public partial class Program
 {
     public static void Main(string[] args)
     {
         var builder = WebApplication.CreateBuilder(args);
-        builder.Services.AddDbContext<BookingDbContext>(options =>
-            options.UseNpgsql(builder.Configuration.GetConnectionString("BookingDb")
-                ?? throw new InvalidOperationException("BookingDb connection string is required.")));
+        builder.Services.AddDbContext<InventoryDbContext>(options =>
+            options.UseNpgsql(builder.Configuration.GetConnectionString("InventoryDb")
+                ?? throw new InvalidOperationException("InventoryDb connection string is required.")));
         builder.Services.AddSingleton(TimeProvider.System);
         builder.Services.AddScoped<IInventoryService, InventoryService>();
         builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();

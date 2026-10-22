@@ -40,7 +40,7 @@ VALUES
      1,NULL,NULL);
 COMMIT;
 "@
-$inventorySql | docker compose exec -T postgres psql -X -U ticketrush -d ticketrush -v ON_ERROR_STOP=1 | Out-Null
+$inventorySql | docker compose exec -T inventory-postgres psql -X -U ticketrush -d ticketrush_inventory -v ON_ERROR_STOP=1 | Out-Null
 Require ($LASTEXITCODE -eq 0) 'could not seed original Inventory inbox/result'
 
 # Seed Ordering SECOND: a Pending intent, its original checkout fact, and an
@@ -96,7 +96,7 @@ SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'),
             AND publish_attempts >= 2),
        (SELECT count(*) FROM inventory_sales WHERE order_id = '$orderId');
 "@
-$inventoryCounts = (docker compose exec -T postgres psql -X -U ticketrush -d ticketrush `
+$inventoryCounts = (docker compose exec -T inventory-postgres psql -X -U ticketrush -d ticketrush_inventory `
     -At -F ',' -v ON_ERROR_STOP=1 -c $inventoryVerifySql) -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not inspect Inventory durable state'
 Require ($inventoryCounts.Trim() -eq '1,1,0') "wrong Inventory receipt/result/sale counts: $inventoryCounts"
