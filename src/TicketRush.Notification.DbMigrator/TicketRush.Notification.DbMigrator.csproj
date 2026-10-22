@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TicketRush.Notification.Persistence/TicketRush.Notification.Persistence.csproj" />
+  </ItemGroup>
+</Project>

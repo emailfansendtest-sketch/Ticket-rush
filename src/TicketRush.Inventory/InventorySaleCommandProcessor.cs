@@ -10,9 +10,9 @@ namespace TicketRush.Inventory;
 public enum InventoryCommandOutcome { Processed, Duplicate }
 
 /// <summary>
-/// Handles one sale command entirely within the Booking/Inventory PostgreSQL database.
-/// Inbox, seat/hold changes, local sale record and resulting outbox message commit atomically.
-/// This is a transitional Inventory-owned operation; the legacy Booking DB is retained.
+/// Handles one sale command entirely within the transitional Booking PostgreSQL database.
+/// Inbox, seat/hold changes, Inventory-owned sale evidence and resulting outbox message
+/// commit atomically. The legacy Booking database is retained until the next increment.
 /// </summary>
 public sealed class InventorySaleCommandProcessor(
     BookingDbContext db, IInventoryCheckout inventory, TimeProvider clock)
@@ -58,13 +58,15 @@ public sealed class InventorySaleCommandProcessor(
             {
                 var soldAt = Truncate(preparation.CheckedAtUtc
                     ?? throw new InvalidOperationException("Inventory did not supply sale time."));
-                db.Orders.Add(new TicketOrder
+                // Inventory records a sale, not a second Ordering aggregate.
+                // The authoritative Order lives in Ordering's PostgreSQL database.
+                // This remains transactional with seats, hold, inbox, and outbox.
+                db.InventorySales.Add(new InventorySaleRecord
                 {
-                    Id = command.OrderId,
+                    OrderId = command.OrderId,
                     HoldId = command.HoldId,
                     BuyerId = command.BuyerId,
-                    IdempotencyKey = $"distributed:{command.OrderId:D}",
-                    CreatedAtUtc = soldAt
+                    SoldAtUtc = soldAt
                 });
                 resultType = nameof(InventorySaleCommittedV1);
                 payload = JsonSerializer.Serialize(new InventorySaleCommittedV1(

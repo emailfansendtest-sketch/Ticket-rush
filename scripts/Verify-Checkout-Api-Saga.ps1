@@ -120,7 +120,7 @@ Require ($LASTEXITCODE -eq 0) 'could not verify Payment database'
 Require ($paymentPersisted.Trim() -eq '1,1') "incorrect durable Payment records: $paymentPersisted"
 $inventoryCounts = (docker compose exec -T postgres psql -X -U ticketrush `
     -d ticketrush -At -F ',' -v ON_ERROR_STOP=1 -c `
-    "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM orders WHERE id = '$orderId');") -join "`n"
+    "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_sales WHERE order_id = '$orderId');") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not verify Inventory database'
 Require ($inventoryCounts.Trim() -eq '1,1,1') "unexpected Inventory records: $inventoryCounts"
 Write-Host 'Ordering HTTP checkout saga smoke: PASS' -ForegroundColor Green

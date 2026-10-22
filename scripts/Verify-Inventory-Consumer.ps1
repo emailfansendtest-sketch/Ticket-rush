@@ -65,7 +65,7 @@ Require ($result -match 'InventorySaleCommittedV1') "sale result not committed: 
 Post-Command $command $auth
 Start-Sleep -Seconds 3
 $counts = (docker compose exec -T postgres psql -U ticketrush -d ticketrush -At -F ',' -c `
-    "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM orders WHERE id = '$orderId');") -join "`n"
+    "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_sales WHERE order_id = '$orderId');") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'database count query failed'
 Require ($counts.Trim() -eq '1,1,1') "expected one inbox, outbox, sale; got '$counts'"
 Write-Host 'Inventory consumer RabbitMQ smoke: PASS' -ForegroundColor Green

@@ -94,7 +94,7 @@ SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'),
        (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'
             AND message_id = '$resultId' AND published_at_utc IS NOT NULL
             AND publish_attempts >= 2),
-       (SELECT count(*) FROM orders WHERE id = '$orderId');
+       (SELECT count(*) FROM inventory_sales WHERE order_id = '$orderId');
 "@
 $inventoryCounts = (docker compose exec -T postgres psql -X -U ticketrush -d ticketrush `
     -At -F ',' -v ON_ERROR_STOP=1 -c $inventoryVerifySql) -join "`n"

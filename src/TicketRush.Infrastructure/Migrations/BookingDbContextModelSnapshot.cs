@@ -40,6 +40,19 @@ namespace TicketRush.Infrastructure.Migrations
                     b.ToTable("inventory_inbox", (string)null);
                 });
 
+            modelBuilder.Entity("TicketRush.Infrastructure.InventorySaleRecord", b =>
+                {
+                    b.Property<Guid>("OrderId").ValueGeneratedNever()
+                        .HasColumnType("uuid").HasColumnName("order_id");
+                    b.Property<Guid>("HoldId").HasColumnType("uuid").HasColumnName("hold_id");
+                    b.Property<Guid>("BuyerId").HasColumnType("uuid").HasColumnName("buyer_id");
+                    b.Property<DateTimeOffset>("SoldAtUtc")
+                        .HasColumnType("timestamp with time zone").HasColumnName("sold_at_utc");
+                    b.HasKey("OrderId");
+                    b.HasIndex("HoldId").IsUnique();
+                    b.ToTable("inventory_sales", (string)null);
+                });
+
             modelBuilder.Entity("TicketRush.Infrastructure.InventoryResultOutbox", b =>
                 {
                     b.Property<Guid>("MessageId").ValueGeneratedNever()
@@ -236,6 +249,15 @@ namespace TicketRush.Infrastructure.Migrations
                     b.HasOne("TicketRush.Domain.TicketEvent", null)
                         .WithMany()
                         .HasForeignKey("EventId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("TicketRush.Infrastructure.InventorySaleRecord", b =>
+                {
+                    b.HasOne("TicketRush.Domain.SeatHold", null)
+                        .WithMany()
+                        .HasForeignKey("HoldId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
                 });

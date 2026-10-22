@@ -43,3 +43,11 @@ Original Copilot goal: **extract independently deployable services, RabbitMQ, tr
 - [ ] Demonstrate no duplicate charges, orders, or sold seats despite worker/broker restarts
 
 Note: MassTransit v9 uses commercial licensing; compare supported v8 against available Apache/MIT alternatives before adding a package. Do not silently adopt v9. See `docs/adr/0007-phase2-service-ownership-and-checkout.md`.
+
+
+### Phase 2.3o.1 — Inventory-owned sale ledger (transitional)
+
+The async sale command now persists Inventory sale evidence in `inventory_sales`
+instead of a duplicate legacy `TicketOrder` row. This is a preparatory ownership
+change **inside the existing shared Booking database**, not a separate Inventory
+DB yet. `README-STEP2.3O1-APPLY.md` covers migration, validation and the next cutover.

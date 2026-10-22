@@ -53,10 +53,11 @@ public sealed class InventorySaleCommandTests
                 await Processor(db).ProcessAsync(cmd, CancellationToken.None));
 
         await using var verify = new BookingDbContext(options);
-        var order = Assert.Single(await verify.Orders.AsNoTracking().ToListAsync());
-        Assert.Equal(cmd.OrderId, order.Id);
-        Assert.Equal(hold, order.HoldId);
-        Assert.Equal(buyer, order.BuyerId);
+        var sale = Assert.Single(await verify.InventorySales.AsNoTracking().ToListAsync());
+        Assert.Empty(await verify.Orders.AsNoTracking().ToListAsync());
+        Assert.Equal(cmd.OrderId, sale.OrderId);
+        Assert.Equal(hold, sale.HoldId);
+        Assert.Equal(buyer, sale.BuyerId);
         var receipt = Assert.Single(await verify.InventoryInbox.AsNoTracking().ToListAsync());
         Assert.Equal(cmd.MessageId, receipt.MessageId);
         Assert.Equal(cmd.OrderId, receipt.OrderId);
@@ -92,7 +93,7 @@ public sealed class InventorySaleCommandTests
         await using var verify = new BookingDbContext(options);
         Assert.Single(await verify.InventoryInbox.AsNoTracking().ToArrayAsync());
         Assert.Single(await verify.InventoryResultOutbox.AsNoTracking().ToArrayAsync());
-        Assert.Single(await verify.Orders.AsNoTracking().ToArrayAsync());
+        Assert.Single(await verify.InventorySales.AsNoTracking().ToArrayAsync());
     }
 
     [Fact]
@@ -115,12 +116,12 @@ public sealed class InventorySaleCommandTests
         Assert.All(await Task.WhenAll(tasks), outcome => Assert.Equal(InventoryCommandOutcome.Processed, outcome));
 
         await using var verify = new BookingDbContext(options);
-        var order = Assert.Single(await verify.Orders.AsNoTracking().ToArrayAsync());
+        var sale = Assert.Single(await verify.InventorySales.AsNoTracking().ToArrayAsync());
         var events = await verify.InventoryResultOutbox.AsNoTracking().ToArrayAsync();
         Assert.Collection(events.OrderBy(x => x.MessageType, StringComparer.Ordinal),
             e => Assert.Equal(nameof(InventorySaleCommittedV1), e.MessageType),
             e => Assert.Equal(nameof(InventorySaleRejectedV1), e.MessageType));
-        Assert.Equal(order.Id, events.Single(x => x.MessageType == nameof(InventorySaleCommittedV1)).OrderId);
+        Assert.Equal(sale.OrderId, events.Single(x => x.MessageType == nameof(InventorySaleCommittedV1)).OrderId);
         Assert.Equal(
             new[] { first.OrderId, second.OrderId }.OrderBy(x => x).ToArray(),
             (await verify.InventoryInbox.Select(x => x.OrderId).ToArrayAsync())
@@ -140,7 +141,7 @@ public sealed class InventorySaleCommandTests
             Assert.Equal(InventoryCommandOutcome.Duplicate,
                 await Processor(db).ProcessAsync(cmd, CancellationToken.None));
         await using var verify = new BookingDbContext(options);
-        Assert.Empty(await verify.Orders.ToArrayAsync());
+        Assert.Empty(await verify.InventorySales.ToArrayAsync());
         var result = Assert.Single(await verify.InventoryResultOutbox.ToArrayAsync());
         Assert.Equal(nameof(InventorySaleRejectedV1), result.MessageType);
         var evt = JsonSerializer.Deserialize<InventorySaleRejectedV1>(result.PayloadJson)!;
@@ -171,6 +172,7 @@ public sealed class InventorySaleCommandTests
         {
             Assert.Empty(await verify.InventoryInbox.ToArrayAsync());
             Assert.Empty(await verify.InventoryResultOutbox.ToArrayAsync());
+            Assert.Empty(await verify.InventorySales.ToArrayAsync());
             Assert.Empty(await verify.Orders.ToArrayAsync());
             Assert.Equal(HoldStatus.Active, (await verify.Holds.SingleAsync(x => x.Id == hold)).Status);
             Assert.Equal(SeatStatus.Held, (await verify.Seats.SingleAsync(
@@ -195,7 +197,7 @@ public sealed class InventorySaleCommandTests
                 await new InventorySaleCommandProcessor(db, new InventoryService(db, clock), clock)
                     .ProcessAsync(cmd, CancellationToken.None));
         await using var verify = new BookingDbContext(options);
-        Assert.Empty(await verify.Orders.ToArrayAsync());
+        Assert.Empty(await verify.InventorySales.ToArrayAsync());
         var result = Assert.Single(await verify.InventoryResultOutbox.ToArrayAsync());
         Assert.Equal("HoldExpired",
             JsonSerializer.Deserialize<InventorySaleRejectedV1>(result.PayloadJson)!.ReasonCode);
@@ -281,7 +283,7 @@ public sealed class InventorySaleCommandTests
         await using var verify = new BookingDbContext(options);
         Assert.Single(await verify.InventoryInbox.AsNoTracking().ToArrayAsync());
         Assert.Single(await verify.InventoryResultOutbox.AsNoTracking().ToArrayAsync());
-        Assert.Single(await verify.Orders.AsNoTracking().ToArrayAsync());
+        Assert.Single(await verify.InventorySales.AsNoTracking().ToArrayAsync());
         Assert.Equal(SeatStatus.Sold, (await verify.Seats.SingleAsync(x =>
             x.EventId == DemoEvent && x.SeatCode == "A-018")).Status);
         Assert.NotNull((await verify.InventoryResultOutbox.SingleAsync()).PublishedAtUtc);
@@ -313,7 +315,7 @@ public sealed class InventorySaleCommandTests
         Assert.Null(restored.PublishedAtUtc);
         Assert.Equal(nameof(InventorySaleRejectedV1), restored.MessageType);
         Assert.Single(await verify.InventoryInbox.ToArrayAsync());
-        Assert.Empty(await verify.Orders.ToArrayAsync());
+        Assert.Empty(await verify.InventorySales.ToArrayAsync());
     }
 
     [Fact]
@@ -394,7 +396,7 @@ public sealed class InventorySaleCommandTests
         Assert.Null((await verify.InventoryResultOutbox.SingleAsync()).PublishedAtUtc);
         Assert.Single(await verify.InventoryInbox.ToArrayAsync());
         Assert.Single(await verify.InventoryResultOutbox.ToArrayAsync());
-        Assert.Empty(await verify.Orders.ToArrayAsync());
+        Assert.Empty(await verify.InventorySales.ToArrayAsync());
     }
 
     [Fact]
