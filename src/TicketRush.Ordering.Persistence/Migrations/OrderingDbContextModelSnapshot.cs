@@ -29,6 +29,10 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
             b.Property<int>("State").HasColumnType("integer").HasColumnName("state");
             b.Property<DateTimeOffset>("RequestedAtUtc")
                 .HasColumnType("timestamp with time zone").HasColumnName("requested_at_utc");
+            b.Property<bool>("PaymentRequired").HasColumnType("boolean")
+                .HasColumnName("payment_required");
+            b.Property<bool>("SimulatePaymentDecline").HasColumnType("boolean")
+                .HasColumnName("simulate_payment_decline");
             b.Property<int>("RecoveryAttempts").HasColumnType("integer")
                 .HasColumnName("recovery_attempts");
             b.Property<DateTimeOffset?>("NextRecoveryAtUtc")
@@ -59,6 +63,22 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
             b.HasKey("MessageId");
             b.HasIndex("OrderId").IsUnique();
             b.ToTable("ordering_result_inbox", (string)null);
+        });
+
+        modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingPaymentInboxMessage", b =>
+        {
+            b.Property<Guid>("MessageId").HasColumnType("uuid")
+                .HasColumnName("message_id").ValueGeneratedNever();
+            b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+            b.Property<string>("MessageType").IsRequired().HasMaxLength(120)
+                .HasColumnType("character varying(120)").HasColumnName("message_type");
+            b.Property<string>("ReasonCode").HasMaxLength(120)
+                .HasColumnType("character varying(120)").HasColumnName("reason_code");
+            b.Property<DateTimeOffset>("ProcessedAtUtc")
+                .HasColumnType("timestamp with time zone").HasColumnName("processed_at_utc");
+            b.HasKey("MessageId");
+            b.HasIndex("OrderId").IsUnique();
+            b.ToTable("ordering_payment_inbox", (string)null);
         });
 
         modelBuilder.Entity("TicketRush.Ordering.Persistence.OutboxMessage", b =>
@@ -94,6 +114,12 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
                 .HasForeignKey("OrderId")
                 .OnDelete(DeleteBehavior.NoAction)
                 .IsRequired();
+        });
+        modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingPaymentInboxMessage", b =>
+        {
+            b.HasOne("TicketRush.Ordering.Persistence.OrderIntent", null)
+                .WithMany().HasForeignKey("OrderId")
+                .OnDelete(DeleteBehavior.NoAction).IsRequired();
         });
         modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingResultInboxMessage", b =>
         {

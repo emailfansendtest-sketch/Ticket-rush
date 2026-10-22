@@ -2,6 +2,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using TicketRush.BuildingBlocks.Contracts.Checkout;
+using TicketRush.BuildingBlocks.Contracts.Payment;
 
 namespace TicketRush.Ordering.Persistence;
 
@@ -15,6 +16,9 @@ public enum SagaProcessOutcome { Processed, Duplicate }
 public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clock)
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    // Explicit sandbox parameters. Pricing is NOT calculated from TicketRush catalog data yet.
+    public const long SandboxAmountMinor = 1000;
+    public const string SandboxCurrency = "USD";
 
     public async Task<SagaProcessOutcome> ScheduleInventoryAsync(
         CheckoutRequestedV1 message, CancellationToken ct)
@@ -47,22 +51,40 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
             ValidateCommand(existing, message);
             return SagaProcessOutcome.Duplicate;
         }
+        if (order.PaymentRequired)
+        {
+            var payment = await db.OutboxMessages.AsNoTracking().SingleOrDefaultAsync(
+                x => x.OrderId == message.OrderId &&
+                     x.MessageType == nameof(PaymentAuthorizationRequestedV1), ct);
+            if (payment is not null)
+            {
+                ValidatePaymentCommand(payment, order);
+                return SagaProcessOutcome.Duplicate;
+            }
+        }
         if (order.State != CheckoutState.Pending)
-            throw new InvalidDataException("Terminal order cannot schedule a new sale.");
+            throw new InvalidDataException("Terminal order cannot schedule a new command.");
 
         await using var tx = await db.Database.BeginTransactionAsync(ct);
         try
         {
             var now = Truncate(clock.GetUtcNow());
             var commandId = Guid.CreateVersion7();
-            var command = new InventorySaleRequestedV1(commandId, message.OrderId,
-                message.HoldId, message.BuyerId, message.RequestedAtUtc);
+            var type = order.PaymentRequired
+                ? nameof(PaymentAuthorizationRequestedV1)
+                : nameof(InventorySaleRequestedV1);
+            var payload = order.PaymentRequired
+                ? JsonSerializer.Serialize(new PaymentAuthorizationRequestedV1(
+                    commandId, message.OrderId, message.BuyerId,
+                    SandboxAmountMinor, SandboxCurrency, order.SimulatePaymentDecline,
+                    message.RequestedAtUtc), JsonOptions)
+                : JsonSerializer.Serialize(new InventorySaleRequestedV1(commandId,
+                    message.OrderId, message.HoldId, message.BuyerId,
+                    message.RequestedAtUtc), JsonOptions);
             db.OutboxMessages.Add(new OutboxMessage
             {
                 MessageId = commandId, OrderId = message.OrderId,
-                MessageType = nameof(InventorySaleRequestedV1),
-                PayloadJson = JsonSerializer.Serialize(command, JsonOptions),
-                CreatedAtUtc = now
+                MessageType = type, PayloadJson = payload, CreatedAtUtc = now
             });
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -73,11 +95,110 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
         {
             await tx.RollbackAsync(ct);
             db.ChangeTracker.Clear();
+            var expectedType = order.PaymentRequired
+                ? nameof(PaymentAuthorizationRequestedV1)
+                : nameof(InventorySaleRequestedV1);
             existing = await db.OutboxMessages.AsNoTracking().SingleOrDefaultAsync(
-                x => x.OrderId == message.OrderId && x.MessageType == nameof(InventorySaleRequestedV1), ct);
+                x => x.OrderId == message.OrderId && x.MessageType == expectedType, ct);
             if (existing is null) throw;
-            ValidateCommand(existing, message);
+            if (order.PaymentRequired) ValidatePaymentCommand(existing, order);
+            else ValidateCommand(existing, message);
             return SagaProcessOutcome.Duplicate;
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            db.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    public Task<SagaProcessOutcome> RecordPaymentResultAsync(
+        PaymentAuthorizedV1 result, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.AmountMinor != SandboxAmountMinor || result.Currency != SandboxCurrency)
+            throw new InvalidDataException("Payment authorized unexpected amount/currency.");
+        return RecordPaymentCoreAsync(result.MessageId, result.OrderId,
+            nameof(PaymentAuthorizedV1), null, ct);
+    }
+
+    public Task<SagaProcessOutcome> RecordPaymentResultAsync(
+        PaymentDeclinedV1 result, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (string.IsNullOrWhiteSpace(result.ReasonCode) || result.ReasonCode.Length > 120)
+            throw new InvalidDataException("Payment decline reason is missing or invalid.");
+        return RecordPaymentCoreAsync(result.MessageId, result.OrderId,
+            nameof(PaymentDeclinedV1), result.ReasonCode, ct);
+    }
+
+    private async Task<SagaProcessOutcome> RecordPaymentCoreAsync(
+        Guid messageId, Guid orderId, string type, string? reason, CancellationToken ct)
+    {
+        if (messageId == Guid.Empty || orderId == Guid.Empty)
+            throw new InvalidDataException("Payment event is missing identifiers.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            // Serialize Payment events, Inventory outcomes and watchdog changes
+            // on the same OrderIntent row.
+            var locked = await db.OrderIntents.FromSqlInterpolated($"""
+                SELECT id, hold_id, buyer_id, idempotency_key, state, requested_at_utc,
+                       payment_required, simulate_payment_decline,
+                       recovery_attempts, next_recovery_at_utc, recovery_needs_attention
+                FROM order_intents WHERE id = {orderId} FOR UPDATE
+                """).ToListAsync(ct);
+            var order = locked.SingleOrDefault()
+                ?? throw new InvalidDataException("Payment result for unknown checkout.");
+            if (!order.PaymentRequired)
+                throw new InvalidDataException("Checkout does not require Payment.");
+            var paymentCommand = await db.OutboxMessages.AsNoTracking().SingleOrDefaultAsync(
+                x => x.OrderId == orderId &&
+                     x.MessageType == nameof(PaymentAuthorizationRequestedV1), ct)
+                ?? throw new InvalidDataException("Unsolicited Payment result.");
+            ValidatePaymentCommand(paymentCommand, order);
+            var receipt = await db.PaymentInbox.SingleOrDefaultAsync(
+                x => x.OrderId == orderId, ct);
+            if (receipt is not null)
+            {
+                if (receipt.MessageId != messageId || receipt.MessageType != type ||
+                    receipt.ReasonCode != reason)
+                    throw new InvalidDataException("Conflicting Payment results.");
+                return SagaProcessOutcome.Duplicate;
+            }
+            if (order.State != CheckoutState.Pending)
+                throw new InvalidDataException("Payment result after terminal checkout.");
+
+            var now = Truncate(clock.GetUtcNow());
+            db.PaymentInbox.Add(new OrderingPaymentInboxMessage
+            {
+                MessageId = messageId, OrderId = orderId, MessageType = type,
+                ReasonCode = reason, ProcessedAtUtc = now
+            });
+            if (type == nameof(PaymentDeclinedV1))
+            {
+                // No Inventory sale has been requested, so no seat compensation is needed.
+                order.State = CheckoutState.Failed;
+                order.NextRecoveryAtUtc = null;
+                order.RecoveryNeedsAttention = false;
+            }
+            else
+            {
+                var inventoryCommandId = Guid.CreateVersion7();
+                var command = new InventorySaleRequestedV1(inventoryCommandId,
+                    order.Id, order.HoldId, order.BuyerId, order.RequestedAtUtc);
+                db.OutboxMessages.Add(new OutboxMessage
+                {
+                    MessageId = inventoryCommandId, OrderId = order.Id,
+                    MessageType = nameof(InventorySaleRequestedV1),
+                    PayloadJson = JsonSerializer.Serialize(command, JsonOptions),
+                    CreatedAtUtc = now
+                });
+            }
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return SagaProcessOutcome.Processed;
         }
         catch
         {
@@ -119,6 +240,7 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
             // Pending -> terminal transition against competing distinct events.
             var locked = await db.OrderIntents.FromSqlInterpolated($"""
                 SELECT id, hold_id, buyer_id, idempotency_key, state, requested_at_utc,
+                       payment_required, simulate_payment_decline,
                        recovery_attempts, next_recovery_at_utc, recovery_needs_attention
                 FROM order_intents
                 WHERE id = {orderId}
@@ -132,6 +254,9 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
             if (!await db.OutboxMessages.AsNoTracking().AnyAsync(x =>
                     x.OrderId == orderId && x.MessageType == nameof(InventorySaleRequestedV1), ct))
                 throw new InvalidDataException("Inventory result has no scheduled sale command.");
+            if (order.PaymentRequired && !await db.PaymentInbox.AsNoTracking().AnyAsync(x =>
+                    x.OrderId == orderId && x.MessageType == nameof(PaymentAuthorizedV1), ct))
+                throw new InvalidDataException("Inventory outcome without Payment authorization.");
 
             var recorded = await db.ResultInbox.AsNoTracking().SingleOrDefaultAsync(
                 x => x.OrderId == orderId, ct);
@@ -165,6 +290,19 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
             db.ChangeTracker.Clear();
             throw;
         }
+    }
+
+    private static void ValidatePaymentCommand(OutboxMessage outbox, OrderIntent order)
+    {
+        var command = JsonSerializer.Deserialize<PaymentAuthorizationRequestedV1>(
+            outbox.PayloadJson, JsonOptions);
+        if (command is null || command.MessageId != outbox.MessageId ||
+            command.OrderId != order.Id || command.BuyerId != order.BuyerId ||
+            command.AmountMinor != SandboxAmountMinor ||
+            command.Currency != SandboxCurrency ||
+            command.SimulateDecline != order.SimulatePaymentDecline ||
+            command.RequestedAtUtc != order.RequestedAtUtc)
+            throw new InvalidDataException("Payment authorization command conflicts with checkout intent.");
     }
 
     private static void ValidateCommand(OutboxMessage outbox, CheckoutRequestedV1 request)

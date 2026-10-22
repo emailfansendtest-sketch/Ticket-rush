@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
 using TicketRush.BuildingBlocks.Contracts.Checkout;
+using TicketRush.BuildingBlocks.Contracts.Payment;
 using TicketRush.Ordering.Persistence;
 
 namespace TicketRush.Ordering.SagaWorker;
@@ -43,6 +44,8 @@ public abstract class SagaQueueWorker(
             CheckoutRequestedV1 v => v.MessageId,
             InventorySaleCommittedV1 v => v.MessageId,
             InventorySaleRejectedV1 v => v.MessageId,
+            PaymentAuthorizedV1 v => v.MessageId,
+            PaymentDeclinedV1 v => v.MessageId,
             _ => throw new InvalidDataException("Unknown saga event payload.")
         };
         if (payloadId != messageId)

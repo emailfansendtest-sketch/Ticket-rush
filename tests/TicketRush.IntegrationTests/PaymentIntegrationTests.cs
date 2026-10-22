@@ -128,6 +128,31 @@ public sealed class PaymentIntegrationTests
     }
 
     [Fact]
+    public async Task Missing_result_outbox_is_a_persistence_failure_not_a_bad_command()
+    {
+        await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();
+        var options = await StartAsync(postgres);
+        var request = NewRequest();
+        await using (var db = new PaymentDbContext(options))
+        {
+            await new PaymentAuthorizationProcessor(db, TimeProvider.System)
+                .ProcessAsync(request, CancellationToken.None);
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                DELETE FROM payment_outbox WHERE order_id = {request.OrderId}
+                """);
+        }
+        await using (var db = new PaymentDbContext(options))
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                new PaymentAuthorizationProcessor(db, TimeProvider.System)
+                    .ProcessAsync(request, CancellationToken.None));
+        }
+        await using var verify = new PaymentDbContext(options);
+        Assert.Single(await verify.Receipts.AsNoTracking().ToArrayAsync());
+        Assert.Empty(await verify.Outbox.AsNoTracking().ToArrayAsync());
+    }
+
+    [Fact]
     public async Task Outbox_insert_failure_rolls_back_receipt()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();

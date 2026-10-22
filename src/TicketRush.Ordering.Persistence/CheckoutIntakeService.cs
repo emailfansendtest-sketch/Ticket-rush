@@ -20,8 +20,11 @@ public sealed class CheckoutIntakeService(OrderingDbContext db, TimeProvider clo
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     public async Task<CheckoutAdmission> AcceptAsync(
-        Guid holdId, Guid buyerId, string? idempotencyKey, CancellationToken ct)
+        Guid holdId, Guid buyerId, string? idempotencyKey, CancellationToken ct,
+        bool paymentRequired = false, bool simulatePaymentDecline = false)
     {
+        if (simulatePaymentDecline && !paymentRequired)
+            return new(CheckoutAdmissionKind.Invalid);
         if (holdId == Guid.Empty || buyerId == Guid.Empty ||
             string.IsNullOrWhiteSpace(idempotencyKey) || idempotencyKey.Length > 100)
         {
@@ -31,7 +34,7 @@ public sealed class CheckoutIntakeService(OrderingDbContext db, TimeProvider clo
         var existing = await db.OrderIntents.AsNoTracking().FirstOrDefaultAsync(
             x => x.BuyerId == buyerId && x.IdempotencyKey == idempotencyKey, ct);
         if (existing is not null)
-            return FromExisting(existing, holdId);
+            return FromExisting(existing, holdId, paymentRequired, simulatePaymentDecline);
 
         var heldOrder = await db.OrderIntents.AsNoTracking().AnyAsync(
             x => x.HoldId == holdId, ct);
@@ -55,7 +58,9 @@ public sealed class CheckoutIntakeService(OrderingDbContext db, TimeProvider clo
                 BuyerId = buyerId,
                 IdempotencyKey = idempotencyKey!,
                 State = CheckoutState.Pending,
-                RequestedAtUtc = now
+                RequestedAtUtc = now,
+                PaymentRequired = paymentRequired,
+                SimulatePaymentDecline = simulatePaymentDecline
             };
             var message = new CheckoutRequestedV1(messageId, orderId, holdId, buyerId, now);
             db.OrderIntents.Add(intent);
@@ -82,7 +87,7 @@ public sealed class CheckoutIntakeService(OrderingDbContext db, TimeProvider clo
             existing = await db.OrderIntents.AsNoTracking().FirstOrDefaultAsync(
                 x => x.BuyerId == buyerId && x.IdempotencyKey == idempotencyKey, ct);
             return existing is not null
-                ? FromExisting(existing, holdId)
+                ? FromExisting(existing, holdId, paymentRequired, simulatePaymentDecline)
                 : new(CheckoutAdmissionKind.Conflict);
         }
         catch (DbUpdateException)
@@ -96,8 +101,10 @@ public sealed class CheckoutIntakeService(OrderingDbContext db, TimeProvider clo
         }
     }
 
-    private static CheckoutAdmission FromExisting(OrderIntent existing, Guid holdId) =>
-        existing.HoldId == holdId
+    private static CheckoutAdmission FromExisting(
+        OrderIntent existing, Guid holdId, bool paymentRequired, bool simulatePaymentDecline) =>
+        existing.HoldId == holdId && existing.PaymentRequired == paymentRequired &&
+        existing.SimulatePaymentDecline == simulatePaymentDecline
             ? new(CheckoutAdmissionKind.Replayed, existing.Id, existing.State, existing.RequestedAtUtc)
             : new(CheckoutAdmissionKind.Conflict);
 }

@@ -1,11 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Configuration;
 using System.Security.Claims;
 using TicketRush.BuildingBlocks.Contracts.Security;
 using TicketRush.Ordering.Persistence;
 
 namespace TicketRush.Ordering.Api;
 
-public sealed record StartCheckoutRequest(Guid HoldId, Guid BuyerId, string? IdempotencyKey, string? HoldProof);
+public sealed record StartCheckoutRequest(Guid HoldId, Guid BuyerId, string? IdempotencyKey,
+    string? HoldProof, bool SimulatePaymentDecline = false);
 
 public static class CheckoutEndpoints
 {
@@ -21,7 +23,7 @@ public static class CheckoutEndpoints
         CheckoutIntakeService intake,
         CheckoutStatusReader reader,
         HoldCheckoutProof holdProof,
-        TimeProvider clock,
+        TimeProvider clock, IConfiguration config,
         ClaimsPrincipal user, CancellationToken ct)
     {
         if (request.HoldId == Guid.Empty || request.BuyerId == Guid.Empty ||
@@ -38,8 +40,15 @@ public static class CheckoutEndpoints
         if (!holdProof.Verify(request.HoldProof, request.HoldId, request.BuyerId, clock.GetUtcNow()))
             return Results.Json(new { error = "Missing, expired or invalid hold proof." }, statusCode: 403);
 
+        // The decline override exists solely for the isolated local sandbox.
+        if (request.SimulatePaymentDecline &&
+            !string.Equals(config["PaymentSandbox:AllowTestDeclines"], "true",
+                StringComparison.OrdinalIgnoreCase))
+            return Results.BadRequest(new { error = "Simulated declines are disabled." });
+
         var admitted = await intake.AcceptAsync(
-            request.HoldId, request.BuyerId, request.IdempotencyKey, ct);
+            request.HoldId, request.BuyerId, request.IdempotencyKey, ct,
+            paymentRequired: true, simulatePaymentDecline: request.SimulatePaymentDecline);
         if (admitted.Kind == CheckoutAdmissionKind.Invalid)
             return Results.BadRequest(new { error = "Invalid checkout: holdId, buyerId, and a nonblank idempotencyKey of up to 100 characters are required." });
         if (admitted.Kind == CheckoutAdmissionKind.Conflict)

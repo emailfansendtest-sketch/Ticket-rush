@@ -8,6 +8,7 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
     public DbSet<OrderIntent> OrderIntents => Set<OrderIntent>();
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<OrderingResultInboxMessage> ResultInbox => Set<OrderingResultInboxMessage>();
+    public DbSet<OrderingPaymentInboxMessage> PaymentInbox => Set<OrderingPaymentInboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,6 +26,8 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
                 .HasMaxLength(100).IsRequired();
             b.Property(x => x.State).HasColumnName("state");
             b.Property(x => x.RequestedAtUtc).HasColumnName("requested_at_utc");
+            b.Property(x => x.PaymentRequired).HasColumnName("payment_required");
+            b.Property(x => x.SimulatePaymentDecline).HasColumnName("simulate_payment_decline");
             b.Property(x => x.RecoveryAttempts).HasColumnName("recovery_attempts");
             b.Property(x => x.NextRecoveryAtUtc).HasColumnName("next_recovery_at_utc");
             b.Property(x => x.RecoveryNeedsAttention).HasColumnName("recovery_needs_attention");
@@ -41,6 +44,22 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
             b.Property(x => x.MessageId).HasColumnName("message_id").ValueGeneratedNever();
             b.Property(x => x.OrderId).HasColumnName("order_id");
             b.Property(x => x.HoldId).HasColumnName("hold_id");
+            b.Property(x => x.MessageType).HasColumnName("message_type")
+                .HasMaxLength(120).IsRequired();
+            b.Property(x => x.ReasonCode).HasColumnName("reason_code")
+                .HasMaxLength(120);
+            b.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
+            b.HasIndex(x => x.OrderId).IsUnique();
+            b.HasOne<OrderIntent>().WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<OrderingPaymentInboxMessage>(b =>
+        {
+            b.ToTable("ordering_payment_inbox");
+            b.HasKey(x => x.MessageId);
+            b.Property(x => x.MessageId).HasColumnName("message_id").ValueGeneratedNever();
+            b.Property(x => x.OrderId).HasColumnName("order_id");
             b.Property(x => x.MessageType).HasColumnName("message_type")
                 .HasMaxLength(120).IsRequired();
             b.Property(x => x.ReasonCode).HasColumnName("reason_code")

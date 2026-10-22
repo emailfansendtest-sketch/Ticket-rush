@@ -1,4 +1,4 @@
-# Phase 2.3f: HTTP checkout intake -> Ordering outbox -> saga -> Inventory -> result -> Ordering status.
+# Phase 2.3l: HTTP -> Ordering -> Payment authorization -> Inventory sale -> Ordering outcome.
 # Requires disposable demo data. This script sells ONE demo seat and does not perform payment.
 param(
     [string]$BookingUrl = 'http://localhost:8088',
@@ -108,6 +108,16 @@ $orderCounts = (docker compose exec -T ordering-postgres psql -X -U ticketrush `
     "SELECT (SELECT count(*) FROM order_intents WHERE id = '$orderId'), (SELECT count(*) FROM outbox_messages WHERE order_id = '$orderId' AND message_type = 'CheckoutRequestedV1'), (SELECT count(*) FROM outbox_messages WHERE order_id = '$orderId' AND message_type = 'InventorySaleRequestedV1'), (SELECT count(*) FROM ordering_result_inbox WHERE order_id = '$orderId' AND message_type = 'InventorySaleCommittedV1');") -join "`n"
 Require ($LASTEXITCODE -eq 0) 'could not verify Ordering database'
 Require ($orderCounts.Trim() -eq '1,1,1,1') "unexpected Ordering records: $orderCounts"
+$paymentStep = (docker compose exec -T ordering-postgres psql -X -U ticketrush `
+    -d ticketrush_ordering -At -F ',' -v ON_ERROR_STOP=1 -c `
+    "SELECT (SELECT count(*) FROM outbox_messages WHERE order_id = '$orderId' AND message_type = 'PaymentAuthorizationRequestedV1'), (SELECT count(*) FROM ordering_payment_inbox WHERE order_id = '$orderId' AND message_type = 'PaymentAuthorizedV1');") -join "`n"
+Require ($LASTEXITCODE -eq 0) 'could not verify Ordering Payment inbox'
+Require ($paymentStep.Trim() -eq '1,1') "incorrect Payment saga records: $paymentStep"
+$paymentPersisted = (docker compose exec -T payment-postgres psql -X -U ticketrush `
+    -d ticketrush_payment -At -F ',' -v ON_ERROR_STOP=1 -c `
+    "SELECT (SELECT count(*) FROM payment_receipts WHERE order_id = '$orderId' AND result_type = 'PaymentAuthorizedV1'), (SELECT count(*) FROM payment_outbox WHERE order_id = '$orderId' AND published_at_utc IS NOT NULL);") -join "`n"
+Require ($LASTEXITCODE -eq 0) 'could not verify Payment database'
+Require ($paymentPersisted.Trim() -eq '1,1') "incorrect durable Payment records: $paymentPersisted"
 $inventoryCounts = (docker compose exec -T postgres psql -X -U ticketrush `
     -d ticketrush -At -F ',' -v ON_ERROR_STOP=1 -c `
     "SELECT (SELECT count(*) FROM inventory_inbox WHERE order_id = '$orderId'), (SELECT count(*) FROM inventory_result_outbox WHERE order_id = '$orderId'), (SELECT count(*) FROM orders WHERE id = '$orderId');") -join "`n"
@@ -115,4 +125,4 @@ Require ($LASTEXITCODE -eq 0) 'could not verify Inventory database'
 Require ($inventoryCounts.Trim() -eq '1,1,1') "unexpected Inventory records: $inventoryCounts"
 Write-Host 'Ordering HTTP checkout saga smoke: PASS' -ForegroundColor Green
 Write-Host "Order: $orderId | Seat: $($seat.seatCode) | Final state: $state"
-Write-Host 'HTTP 202 acceptance; HTTP 200 replay; one fact, one command, one sale and one result.'
+Write-Host 'HTTP 202/200; one Payment authorization, one Inventory sale, one terminal Ordering result.'

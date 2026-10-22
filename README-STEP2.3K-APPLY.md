@@ -19,6 +19,11 @@ sandbox-only control and must not be used for real payments.
   No Ordering consumer is attached to this queue in 2.3k.
 - Replayed commands preserve the original result MessageId and can re-arm a previously
   published result. No second authorization record is created.
+- A missing persisted result outbox is treated as an internal consistency failure
+  (retry/repair), not as a malformed incoming command; this is regression-tested.
+  Persistent database corruption requires operator repair, and repeated immediate
+  requeue may delay other commands until fixed. Routine bounded backoff and
+  operational quarantine are future reliability work.
 
 ## Validate
 
@@ -40,7 +45,7 @@ docker compose logs payment-migrate payment-worker
 powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Payment-Simulation.ps1
 ```
 
-Expected test count: **100** (92 existing + 8 new tests, counting the two-case theory).
+Expected test count: **101** (92 existing + 9 new tests, counting the two-case theory).
 
 The Payment smoke publishes two synthetic AMQP commands, then observes both
 Payment outcomes in a temporary RabbitMQ queue and confirms Payment outbox

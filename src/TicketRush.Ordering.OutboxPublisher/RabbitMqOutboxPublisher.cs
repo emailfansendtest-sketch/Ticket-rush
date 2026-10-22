@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using System.Text;
 using RabbitMQ.Client;
 using TicketRush.Ordering.Persistence;
+using TicketRush.BuildingBlocks.Contracts.Payment;
 
 namespace TicketRush.Ordering.OutboxPublisher;
 
@@ -19,6 +20,9 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
     public const string InventoryQueue = "ticket.inventory.sale-requested.v1";
     public const string InventoryDeadExchange = "ticket.dead";
     public const string InventoryDeadQueue = "ticket.inventory.sale-requested.dead.v1";
+    public const string PaymentRoutingKey = "payment.authorize-requested.v1";
+    public const string PaymentQueue = "ticket.payment.authorize-requested.v1";
+    public const string PaymentDeadQueue = "ticket.payment.authorize-requested.dead.v1";
 
     public async Task PublishAsync(OutboxMessage message, CancellationToken ct)
     {
@@ -26,6 +30,7 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
         {
             "CheckoutRequestedV1" => RoutingKey,
             "InventorySaleRequestedV1" => InventoryRoutingKey,
+            nameof(PaymentAuthorizationRequestedV1) => PaymentRoutingKey,
             _ => throw new InvalidOperationException($"Unknown outbox message type: {message.MessageType}")
         };
 
@@ -76,6 +81,22 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
             arguments: inventoryArgs, cancellationToken: ct);
         await channel.QueueBindAsync(
             InventoryQueue, Exchange, InventoryRoutingKey,
+            arguments: null, cancellationToken: ct);
+
+        // Match PaymentCommandWorker's existing durable queue arguments exactly.
+        await channel.QueueDeclareAsync(
+            PaymentDeadQueue, durable: true, exclusive: false, autoDelete: false,
+            arguments: null, cancellationToken: ct);
+        await channel.QueueBindAsync(PaymentDeadQueue, InventoryDeadExchange,
+            PaymentRoutingKey, arguments: null, cancellationToken: ct);
+        var paymentArgs = new Dictionary<string, object?>
+        {
+            ["x-dead-letter-exchange"] = InventoryDeadExchange,
+            ["x-dead-letter-routing-key"] = PaymentRoutingKey
+        };
+        await channel.QueueDeclareAsync(PaymentQueue, durable: true, exclusive: false,
+            autoDelete: false, arguments: paymentArgs, cancellationToken: ct);
+        await channel.QueueBindAsync(PaymentQueue, Exchange, PaymentRoutingKey,
             arguments: null, cancellationToken: ct);
 
         var properties = new BasicProperties

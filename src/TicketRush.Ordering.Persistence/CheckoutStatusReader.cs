@@ -22,12 +22,16 @@ public sealed class CheckoutStatusReader(OrderingDbContext db)
             join receipt in db.ResultInbox.AsNoTracking()
                 on order.Id equals receipt.OrderId into receipts
             from receipt in receipts.DefaultIfEmpty()
+            join payment in db.PaymentInbox.AsNoTracking()
+                on order.Id equals payment.OrderId into payments
+            from payment in payments.DefaultIfEmpty()
             where order.Id == orderId && order.BuyerId == buyerId
             select new
             {
                 order.Id, order.HoldId, order.State, order.RequestedAtUtc,
                 order.RecoveryAttempts, order.RecoveryNeedsAttention,
-                FailureReasonCode = receipt == null ? null : receipt.ReasonCode
+                FailureReasonCode = receipt == null ?
+                    (payment == null ? null : payment.ReasonCode) : receipt.ReasonCode
             }).SingleOrDefaultAsync(ct);
 
         return projection is null ? null : new CheckoutStatusView(

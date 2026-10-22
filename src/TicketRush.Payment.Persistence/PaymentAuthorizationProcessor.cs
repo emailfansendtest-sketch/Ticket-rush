@@ -103,7 +103,7 @@ public sealed class PaymentAuthorizationProcessor(PaymentDbContext db, TimeProvi
         if (count == 0 && !await db.Outbox.AsNoTracking().AnyAsync(x =>
                 x.MessageId == receipt.ResultMessageId && x.OrderId == receipt.OrderId &&
                 x.MessageType == receipt.ResultType, ct))
-            throw new InvalidDataException("Payment receipt has no matching result outbox.");
+            throw new InvalidOperationException("Payment receipt has no matching result outbox.");
     }
 
     private static void Validate(PaymentAuthorizationRequestedV1 command)

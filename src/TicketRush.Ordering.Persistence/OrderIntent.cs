@@ -9,6 +9,9 @@ public sealed class OrderIntent
     public string IdempotencyKey { get; set; } = string.Empty;
     public CheckoutState State { get; set; } = CheckoutState.Pending;
     public DateTimeOffset RequestedAtUtc { get; set; }
+    // False for pre-2.3l intents. New HTTP checkouts require sandbox authorization.
+    public bool PaymentRequired { get; set; }
+    public bool SimulatePaymentDecline { get; set; }
     // Recovery is operational progress, independent of Inventory's business outcome.
     public int RecoveryAttempts { get; set; }
     public DateTimeOffset? NextRecoveryAtUtc { get; set; }

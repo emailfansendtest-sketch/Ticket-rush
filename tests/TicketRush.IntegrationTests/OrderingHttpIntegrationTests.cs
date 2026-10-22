@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 using TicketRush.BuildingBlocks.Contracts.Checkout;
+using TicketRush.BuildingBlocks.Contracts.Payment;
 using TicketRush.Ordering.Persistence;
 using Xunit;
 
@@ -220,6 +221,11 @@ public sealed class OrderingHttpIntegrationTests
             var saga = new OrderingSagaProcessor(db, TimeProvider.System);
             Assert.Equal(SagaProcessOutcome.Processed,
                 await saga.ScheduleInventoryAsync(checkout, CancellationToken.None));
+            Assert.Equal(SagaProcessOutcome.Processed,
+                await saga.RecordPaymentResultAsync(new PaymentAuthorizedV1(
+                    Guid.NewGuid(), receipt.OrderId, OrderingSagaProcessor.SandboxAmountMinor,
+                    OrderingSagaProcessor.SandboxCurrency, DateTimeOffset.UtcNow),
+                    CancellationToken.None));
             if (committed)
             {
                 Assert.Equal(SagaProcessOutcome.Processed,

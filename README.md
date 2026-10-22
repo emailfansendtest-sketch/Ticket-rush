@@ -162,3 +162,13 @@ Booking and Ordering now validate bearer JWTs from a Keycloak development realm.
 ## Phase 2.3k — Payment sandbox
 
 See [README-STEP2.3K-APPLY.md](README-STEP2.3K-APPLY.md). Independent Payment PostgreSQL inbox/outbox and RabbitMQ workers. **Authorization simulation only; not yet part of Ordering checkout saga; no actual charges or captures.**
+
+
+## Phase 2.3l — simulated Payment authorization gate
+
+New authenticated HTTP checkouts now require Payment authorization before Inventory
+can sell held seats. Payment decline terminates the checkout without selling seats;
+Payment authorization schedules the Inventory sale through the existing transactional
+outbox and saga. Historical Ordering intents keep their Inventory-only behavior.
+See [README-STEP2.3L-APPLY.md](README-STEP2.3L-APPLY.md) for migration,
+validation, sandbox limitations, and end-to-end smoke-test commands.

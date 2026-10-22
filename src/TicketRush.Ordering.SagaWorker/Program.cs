@@ -34,4 +34,5 @@ builder.Services.AddScoped<SagaRecoveryDispatcher>();
 builder.Services.AddHostedService<SagaRecoveryWorker>();
 builder.Services.AddHostedService<CheckoutRequestedWorker>();
 builder.Services.AddHostedService<InventoryResultWorker>();
+builder.Services.AddHostedService<PaymentResultWorker>();
 await builder.Build().RunAsync();

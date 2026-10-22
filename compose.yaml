@@ -126,6 +126,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       Auth__Authority: http://keycloak:8080/realms/ticketrush
       Auth__Audience: ticketrush-apis
+      PaymentSandbox__AllowTestDeclines: "true"
       Auth__AllowInsecureHttpMetadata: "true"
       HoldProof__KeyBase64: "${HOLD_PROOF_KEY_BASE64:?Run scripts/Initialize-Dev-Hold-Proof.ps1 first}"
       ConnectionStrings__OrderingDb: "Host=ordering-postgres;Port=5432;Database=ticketrush_ordering;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"

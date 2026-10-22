@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TicketRush.BuildingBlocks.Contracts.Checkout;
+using TicketRush.BuildingBlocks.Contracts.Payment;
 
 namespace TicketRush.Ordering.Persistence;
 
@@ -11,7 +12,8 @@ namespace TicketRush.Ordering.Persistence;
 public enum SagaRecoveryOutcome
 {
     None, CheckoutRepublishScheduled, InventoryRepublishScheduled,
-    CheckoutAlreadyQueued, InventoryAlreadyQueued, NeedsAttention
+    CheckoutAlreadyQueued, InventoryAlreadyQueued, NeedsAttention,
+    PaymentRepublishScheduled, PaymentAlreadyQueued
 }
 
 public sealed record SagaRecoveryOptions(
@@ -48,6 +50,7 @@ public sealed class SagaRecoveryDispatcher(
         // replicas must not schedule retries for the same intent concurrently.
         var pending = await db.OrderIntents.FromSqlInterpolated($"""
             SELECT id, hold_id, buyer_id, idempotency_key, state, requested_at_utc,
+                   payment_required, simulate_payment_decline,
                    recovery_attempts, next_recovery_at_utc, recovery_needs_attention
             FROM order_intents
             WHERE state = 0 AND recovery_needs_attention = FALSE
@@ -69,6 +72,8 @@ public sealed class SagaRecoveryDispatcher(
             .Where(x => x.OrderId == order.Id).ToListAsync(ct);
         var command = messages.SingleOrDefault(x =>
             x.MessageType == nameof(InventorySaleRequestedV1));
+        var payment = messages.SingleOrDefault(x =>
+            x.MessageType == nameof(PaymentAuthorizationRequestedV1));
         var fact = messages.SingleOrDefault(x =>
             x.MessageType == nameof(CheckoutRequestedV1));
         if (fact is null)
@@ -82,7 +87,7 @@ public sealed class SagaRecoveryDispatcher(
             await tx.CommitAsync(ct);
             return SagaRecoveryOutcome.NeedsAttention;
         }
-        var chosen = command ?? fact;
+        var chosen = command ?? payment ?? fact;
         var wasPublished = chosen.PublishedAtUtc is not null;
         if (wasPublished)
         {
@@ -113,6 +118,9 @@ public sealed class SagaRecoveryDispatcher(
         if (command is not null)
             return wasPublished ? SagaRecoveryOutcome.InventoryRepublishScheduled
                 : SagaRecoveryOutcome.InventoryAlreadyQueued;
+        if (payment is not null)
+            return wasPublished ? SagaRecoveryOutcome.PaymentRepublishScheduled
+                : SagaRecoveryOutcome.PaymentAlreadyQueued;
         return wasPublished ? SagaRecoveryOutcome.CheckoutRepublishScheduled
             : SagaRecoveryOutcome.CheckoutAlreadyQueued;
     }
