@@ -81,6 +81,22 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
             b.ToTable("ordering_payment_inbox", (string)null);
         });
 
+        modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingVoidInboxMessage", b =>
+        {
+            b.Property<Guid>("MessageId").HasColumnType("uuid")
+                .HasColumnName("message_id").ValueGeneratedNever();
+            b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+            b.Property<Guid>("VoidCommandId").HasColumnType("uuid")
+                .HasColumnName("void_command_id");
+            b.Property<Guid>("AuthorizationCommandId").HasColumnType("uuid")
+                .HasColumnName("authorization_command_id");
+            b.Property<DateTimeOffset>("ProcessedAtUtc")
+                .HasColumnType("timestamp with time zone").HasColumnName("processed_at_utc");
+            b.HasKey("MessageId");
+            b.HasIndex("OrderId").IsUnique();
+            b.ToTable("ordering_void_inbox", (string)null);
+        });
+
         modelBuilder.Entity("TicketRush.Ordering.Persistence.OutboxMessage", b =>
         {
             b.Property<Guid>("MessageId").HasColumnType("uuid")
@@ -116,6 +132,12 @@ partial class OrderingDbContextModelSnapshot : ModelSnapshot
                 .IsRequired();
         });
         modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingPaymentInboxMessage", b =>
+        {
+            b.HasOne("TicketRush.Ordering.Persistence.OrderIntent", null)
+                .WithMany().HasForeignKey("OrderId")
+                .OnDelete(DeleteBehavior.NoAction).IsRequired();
+        });
+        modelBuilder.Entity("TicketRush.Ordering.Persistence.OrderingVoidInboxMessage", b =>
         {
             b.HasOne("TicketRush.Ordering.Persistence.OrderIntent", null)
                 .WithMany().HasForeignKey("OrderId")

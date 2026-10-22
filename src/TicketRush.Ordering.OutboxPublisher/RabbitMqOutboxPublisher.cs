@@ -23,6 +23,9 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
     public const string PaymentRoutingKey = "payment.authorize-requested.v1";
     public const string PaymentQueue = "ticket.payment.authorize-requested.v1";
     public const string PaymentDeadQueue = "ticket.payment.authorize-requested.dead.v1";
+    public const string VoidRoutingKey = "payment.void-requested.v1";
+    public const string VoidQueue = "ticket.payment.void-requested.v1";
+    public const string VoidDeadQueue = "ticket.payment.void-requested.dead.v1";
 
     public async Task PublishAsync(OutboxMessage message, CancellationToken ct)
     {
@@ -31,6 +34,7 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
             "CheckoutRequestedV1" => RoutingKey,
             "InventorySaleRequestedV1" => InventoryRoutingKey,
             nameof(PaymentAuthorizationRequestedV1) => PaymentRoutingKey,
+            nameof(PaymentVoidRequestedV1) => VoidRoutingKey,
             _ => throw new InvalidOperationException($"Unknown outbox message type: {message.MessageType}")
         };
 
@@ -97,6 +101,21 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
         await channel.QueueDeclareAsync(PaymentQueue, durable: true, exclusive: false,
             autoDelete: false, arguments: paymentArgs, cancellationToken: ct);
         await channel.QueueBindAsync(PaymentQueue, Exchange, PaymentRoutingKey,
+            arguments: null, cancellationToken: ct);
+
+        // Match PaymentVoidWorker's dead-letter queue arguments.
+        await channel.QueueDeclareAsync(VoidDeadQueue, durable: true, exclusive: false,
+            autoDelete: false, arguments: null, cancellationToken: ct);
+        await channel.QueueBindAsync(VoidDeadQueue, InventoryDeadExchange,
+            VoidRoutingKey, arguments: null, cancellationToken: ct);
+        var voidArgs = new Dictionary<string, object?>
+        {
+            ["x-dead-letter-exchange"] = InventoryDeadExchange,
+            ["x-dead-letter-routing-key"] = VoidRoutingKey
+        };
+        await channel.QueueDeclareAsync(VoidQueue, durable: true, exclusive: false,
+            autoDelete: false, arguments: voidArgs, cancellationToken: ct);
+        await channel.QueueBindAsync(VoidQueue, Exchange, VoidRoutingKey,
             arguments: null, cancellationToken: ct);
 
         var properties = new BasicProperties

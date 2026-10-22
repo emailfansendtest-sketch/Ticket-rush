@@ -12,4 +12,5 @@ public sealed class PaymentReceipt
     public DateTimeOffset ProcessedAtUtc { get; set; }
     public Guid ResultMessageId { get; set; }
     public string ResultType { get; set; } = string.Empty;
+    public DateTimeOffset? VoidedAtUtc { get; set; }
 }

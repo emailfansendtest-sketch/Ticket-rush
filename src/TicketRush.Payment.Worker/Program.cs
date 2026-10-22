@@ -13,8 +13,10 @@ _ = builder.Configuration["RabbitMq:Uri"]
 builder.Services.AddDbContext<PaymentDbContext>(x => x.UseNpgsql(connection));
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<PaymentAuthorizationProcessor>();
+builder.Services.AddScoped<PaymentVoidProcessor>();
 builder.Services.AddScoped<PaymentOutboxDispatcher>();
 builder.Services.AddSingleton<IPaymentResultPublisher, RabbitMqPaymentResultPublisher>();
 builder.Services.AddHostedService<PaymentCommandWorker>();
+builder.Services.AddHostedService<PaymentVoidWorker>();
 builder.Services.AddHostedService<PaymentOutboxWorker>();
 await builder.Build().RunAsync();

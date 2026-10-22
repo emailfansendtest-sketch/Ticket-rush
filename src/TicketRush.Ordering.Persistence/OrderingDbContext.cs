@@ -9,6 +9,7 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
     public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
     public DbSet<OrderingResultInboxMessage> ResultInbox => Set<OrderingResultInboxMessage>();
     public DbSet<OrderingPaymentInboxMessage> PaymentInbox => Set<OrderingPaymentInboxMessage>();
+    public DbSet<OrderingVoidInboxMessage> VoidInbox => Set<OrderingVoidInboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -70,6 +71,19 @@ public sealed class OrderingDbContext(DbContextOptions<OrderingDbContext> option
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
+        modelBuilder.Entity<OrderingVoidInboxMessage>(b =>
+        {
+            b.ToTable("ordering_void_inbox");
+            b.HasKey(x => x.MessageId);
+            b.Property(x => x.MessageId).HasColumnName("message_id").ValueGeneratedNever();
+            b.Property(x => x.OrderId).HasColumnName("order_id");
+            b.Property(x => x.VoidCommandId).HasColumnName("void_command_id");
+            b.Property(x => x.AuthorizationCommandId).HasColumnName("authorization_command_id");
+            b.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
+            b.HasIndex(x => x.OrderId).IsUnique();
+            b.HasOne<OrderIntent>().WithMany().HasForeignKey(x => x.OrderId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
         modelBuilder.Entity<OutboxMessage>(b =>
         {
             b.ToTable("outbox_messages");

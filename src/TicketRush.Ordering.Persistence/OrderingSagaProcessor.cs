@@ -271,15 +271,104 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
                 throw new InvalidDataException("Ordering intent is terminal without an inbox receipt.");
 
             order.State = target;
-            // A late authoritative Inventory result resolves any recovery alert.
+            // A late authoritative Inventory result resolves the Pending saga.
+            // A rejected sale after authorization creates a separate durable
+            // compensation command in the SAME transaction as the failed state.
             order.RecoveryNeedsAttention = false;
             order.NextRecoveryAtUtc = null;
+            if (target == CheckoutState.Failed && order.PaymentRequired)
+            {
+                var auth = await db.OutboxMessages.AsNoTracking().SingleAsync(x =>
+                    x.OrderId == orderId &&
+                    x.MessageType == nameof(PaymentAuthorizationRequestedV1), ct);
+                var voidId = Guid.CreateVersion7();
+                var now = Truncate(clock.GetUtcNow());
+                var voidRequest = new PaymentVoidRequestedV1(voidId, order.Id, order.BuyerId,
+                    auth.MessageId, order.RequestedAtUtc);
+                db.OutboxMessages.Add(new OutboxMessage
+                {
+                    MessageId = voidId, OrderId = order.Id,
+                    MessageType = nameof(PaymentVoidRequestedV1),
+                    PayloadJson = JsonSerializer.Serialize(voidRequest, JsonOptions),
+                    CreatedAtUtc = now
+                });
+                // Recovery continues even though the business checkout is Failed.
+                order.RecoveryAttempts = 0;
+                order.NextRecoveryAtUtc = Truncate(now.AddMinutes(2));
+            }
             db.ResultInbox.Add(new OrderingResultInboxMessage
             {
                 MessageId = messageId, OrderId = orderId, HoldId = holdId,
                 MessageType = messageType, ReasonCode = reason,
                 ProcessedAtUtc = Truncate(clock.GetUtcNow())
             });
+            await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return SagaProcessOutcome.Processed;
+        }
+        catch
+        {
+            await tx.RollbackAsync(CancellationToken.None);
+            db.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    public async Task<SagaProcessOutcome> RecordVoidResultAsync(
+        PaymentVoidedV1 result, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.MessageId == Guid.Empty || result.OrderId == Guid.Empty ||
+            result.VoidCommandId == Guid.Empty || result.AuthorizationCommandId == Guid.Empty)
+            throw new InvalidDataException("Void result has missing identifiers.");
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        try
+        {
+            var locked = await db.OrderIntents.FromSqlInterpolated($"""
+                SELECT id, hold_id, buyer_id, idempotency_key, state, requested_at_utc,
+                       payment_required, simulate_payment_decline,
+                       recovery_attempts, next_recovery_at_utc, recovery_needs_attention
+                FROM order_intents WHERE id = {result.OrderId} FOR UPDATE
+                """).ToListAsync(ct);
+            var order = locked.SingleOrDefault()
+                ?? throw new InvalidDataException("Void result for unknown checkout.");
+            if (!order.PaymentRequired || order.State != CheckoutState.Failed ||
+                !await db.ResultInbox.AsNoTracking().AnyAsync(x =>
+                    x.OrderId == result.OrderId &&
+                    x.MessageType == nameof(InventorySaleRejectedV1), ct) ||
+                !await db.PaymentInbox.AsNoTracking().AnyAsync(x =>
+                    x.OrderId == result.OrderId &&
+                    x.MessageType == nameof(PaymentAuthorizedV1), ct))
+                throw new InvalidDataException("Unsolicited or contradictory Payment void result.");
+            var command = await db.OutboxMessages.AsNoTracking().SingleOrDefaultAsync(x =>
+                x.OrderId == result.OrderId &&
+                x.MessageType == nameof(PaymentVoidRequestedV1), ct)
+                ?? throw new InvalidDataException("Void result without scheduled command.");
+            var expected = JsonSerializer.Deserialize<PaymentVoidRequestedV1>(
+                command.PayloadJson, JsonOptions);
+            if (expected is null || expected.MessageId != command.MessageId ||
+                expected.OrderId != order.Id || expected.BuyerId != order.BuyerId ||
+                result.VoidCommandId != expected.MessageId ||
+                result.AuthorizationCommandId != expected.AuthorizationCommandId)
+                throw new InvalidDataException("Void result does not match Ordering's command.");
+            var previous = await db.VoidInbox.SingleOrDefaultAsync(x => x.OrderId == order.Id, ct);
+            if (previous is not null)
+            {
+                if (previous.MessageId != result.MessageId ||
+                    previous.VoidCommandId != result.VoidCommandId ||
+                    previous.AuthorizationCommandId != result.AuthorizationCommandId)
+                    throw new InvalidDataException("Conflicting Payment void results.");
+                return SagaProcessOutcome.Duplicate;
+            }
+            db.VoidInbox.Add(new OrderingVoidInboxMessage
+            {
+                MessageId = result.MessageId, OrderId = order.Id,
+                VoidCommandId = result.VoidCommandId,
+                AuthorizationCommandId = result.AuthorizationCommandId,
+                ProcessedAtUtc = Truncate(clock.GetUtcNow())
+            });
+            order.NextRecoveryAtUtc = null;
+            order.RecoveryNeedsAttention = false;
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
             return SagaProcessOutcome.Processed;

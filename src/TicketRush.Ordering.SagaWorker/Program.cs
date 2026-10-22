@@ -31,8 +31,11 @@ var recoveryOptions = new SagaRecoveryOptions(
 recoveryOptions.Validate();
 builder.Services.AddSingleton(recoveryOptions);
 builder.Services.AddScoped<SagaRecoveryDispatcher>();
+builder.Services.AddScoped<PaymentVoidRecoveryDispatcher>();
 builder.Services.AddHostedService<SagaRecoveryWorker>();
+builder.Services.AddHostedService<PaymentVoidRecoveryWorker>();
 builder.Services.AddHostedService<CheckoutRequestedWorker>();
 builder.Services.AddHostedService<InventoryResultWorker>();
 builder.Services.AddHostedService<PaymentResultWorker>();
+builder.Services.AddHostedService<PaymentVoidResultWorker>();
 await builder.Build().RunAsync();

@@ -32,10 +32,24 @@ public partial class PaymentDbContextModelSnapshot : ModelSnapshot
             b.Property<Guid>("ResultMessageId").HasColumnType("uuid").HasColumnName("result_message_id");
             b.Property<string>("ResultType").IsRequired().HasMaxLength(120).HasColumnType("character varying(120)").HasColumnName("result_type");
             b.Property<bool>("SimulateDecline").HasColumnType("boolean").HasColumnName("simulate_decline");
+            b.Property<DateTimeOffset?>("VoidedAtUtc").HasColumnType("timestamp with time zone").HasColumnName("voided_at_utc");
             b.HasKey("MessageId");
             b.HasIndex("OrderId").IsUnique();
             b.HasIndex("ResultMessageId").IsUnique();
             b.ToTable("payment_receipts");
+        });
+        modelBuilder.Entity("TicketRush.Payment.Persistence.PaymentVoidReceipt", b =>
+        {
+            b.Property<Guid>("MessageId").ValueGeneratedNever().HasColumnType("uuid").HasColumnName("message_id");
+            b.Property<Guid>("OrderId").HasColumnType("uuid").HasColumnName("order_id");
+            b.Property<Guid>("BuyerId").HasColumnType("uuid").HasColumnName("buyer_id");
+            b.Property<Guid>("AuthorizationCommandId").HasColumnType("uuid").HasColumnName("authorization_command_id");
+            b.Property<Guid>("ResultMessageId").HasColumnType("uuid").HasColumnName("result_message_id");
+            b.Property<DateTimeOffset>("ProcessedAtUtc").HasColumnType("timestamp with time zone").HasColumnName("processed_at_utc");
+            b.HasKey("MessageId");
+            b.HasIndex("OrderId").IsUnique();
+            b.HasIndex("ResultMessageId").IsUnique();
+            b.ToTable("payment_void_receipts");
         });
         modelBuilder.Entity("TicketRush.Payment.Persistence.PaymentOutboxMessage", b =>
         {
@@ -49,7 +63,7 @@ public partial class PaymentDbContextModelSnapshot : ModelSnapshot
             b.Property<DateTimeOffset?>("PublishedAtUtc").HasColumnType("timestamp with time zone").HasColumnName("published_at_utc");
             b.Property<int>("PublishAttempts").HasColumnType("integer").HasColumnName("publish_attempts");
             b.HasKey("MessageId");
-            b.HasIndex("OrderId").IsUnique();
+            b.HasIndex("OrderId", "MessageType").IsUnique();
             b.HasIndex("PublishedAtUtc", "NextAttemptAtUtc", "CreatedAtUtc");
             b.ToTable("payment_outbox");
         });

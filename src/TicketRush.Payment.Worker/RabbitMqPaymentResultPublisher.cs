@@ -12,6 +12,8 @@ public sealed class RabbitMqPaymentResultPublisher(IConfiguration config) : IPay
     public const string Queue = "ticket.ordering.payment-results.v1";
     public const string ApprovedKey = "payment.authorized.v1";
     public const string DeclinedKey = "payment.declined.v1";
+    public const string VoidedKey = "payment.voided.v1";
+    public const string VoidQueue = "ticket.ordering.payment-void-results.v1";
 
     public async Task PublishAsync(PaymentOutboxMessage message, CancellationToken ct)
     {
@@ -19,6 +21,7 @@ public sealed class RabbitMqPaymentResultPublisher(IConfiguration config) : IPay
         {
             nameof(PaymentAuthorizedV1) => ApprovedKey,
             nameof(PaymentDeclinedV1) => DeclinedKey,
+            nameof(PaymentVoidedV1) => VoidedKey,
             _ => throw new InvalidOperationException("Unsupported Payment outbox message type.")
         };
         var uri = config["RabbitMq:Uri"]
@@ -39,6 +42,10 @@ public sealed class RabbitMqPaymentResultPublisher(IConfiguration config) : IPay
         await channel.QueueBindAsync(Queue, Exchange, ApprovedKey,
             arguments: null, cancellationToken: ct);
         await channel.QueueBindAsync(Queue, Exchange, DeclinedKey,
+            arguments: null, cancellationToken: ct);
+        await channel.QueueDeclareAsync(VoidQueue, durable: true, exclusive: false,
+            autoDelete: false, arguments: null, cancellationToken: ct);
+        await channel.QueueBindAsync(VoidQueue, Exchange, VoidedKey,
             arguments: null, cancellationToken: ct);
         var properties = new BasicProperties
         {

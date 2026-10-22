@@ -46,6 +46,7 @@ public abstract class SagaQueueWorker(
             InventorySaleRejectedV1 v => v.MessageId,
             PaymentAuthorizedV1 v => v.MessageId,
             PaymentDeclinedV1 v => v.MessageId,
+            PaymentVoidedV1 v => v.MessageId,
             _ => throw new InvalidDataException("Unknown saga event payload.")
         };
         if (payloadId != messageId)

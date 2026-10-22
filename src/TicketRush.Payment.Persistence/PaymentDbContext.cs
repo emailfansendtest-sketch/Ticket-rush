@@ -6,6 +6,7 @@ namespace TicketRush.Payment.Persistence;
 public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options) : DbContext(options)
 {
     public DbSet<PaymentReceipt> Receipts => Set<PaymentReceipt>();
+    public DbSet<PaymentVoidReceipt> VoidReceipts => Set<PaymentVoidReceipt>();
     public DbSet<PaymentOutboxMessage> Outbox => Set<PaymentOutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -24,6 +25,20 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
             b.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
             b.Property(x => x.ResultMessageId).HasColumnName("result_message_id");
             b.Property(x => x.ResultType).HasColumnName("result_type").HasMaxLength(120).IsRequired();
+            b.Property(x => x.VoidedAtUtc).HasColumnName("voided_at_utc");
+            b.HasIndex(x => x.OrderId).IsUnique();
+            b.HasIndex(x => x.ResultMessageId).IsUnique();
+        });
+        modelBuilder.Entity<PaymentVoidReceipt>(b =>
+        {
+            b.ToTable("payment_void_receipts");
+            b.HasKey(x => x.MessageId);
+            b.Property(x => x.MessageId).HasColumnName("message_id").ValueGeneratedNever();
+            b.Property(x => x.OrderId).HasColumnName("order_id");
+            b.Property(x => x.BuyerId).HasColumnName("buyer_id");
+            b.Property(x => x.AuthorizationCommandId).HasColumnName("authorization_command_id");
+            b.Property(x => x.ResultMessageId).HasColumnName("result_message_id");
+            b.Property(x => x.ProcessedAtUtc).HasColumnName("processed_at_utc");
             b.HasIndex(x => x.OrderId).IsUnique();
             b.HasIndex(x => x.ResultMessageId).IsUnique();
         });
@@ -41,7 +56,7 @@ public sealed class PaymentDbContext(DbContextOptions<PaymentDbContext> options)
             b.Property(x => x.NextAttemptAtUtc).HasColumnName("next_attempt_at_utc");
             b.Property(x => x.LastError).HasColumnName("last_error").HasMaxLength(1000);
             b.HasIndex(x => new { x.PublishedAtUtc, x.NextAttemptAtUtc, x.CreatedAtUtc });
-            b.HasIndex(x => x.OrderId).IsUnique();
+            b.HasIndex(x => new { x.OrderId, x.MessageType }).IsUnique();
         });
     }
 }
