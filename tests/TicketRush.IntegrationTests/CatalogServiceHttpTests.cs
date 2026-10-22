@@ -59,6 +59,17 @@ public sealed class CatalogServiceHttpTests
     }
 
     [Fact]
+    public async Task Gateway_without_inventory_configuration_starts_and_returns_503_for_seats()
+    {
+        // A Catalog-only gateway must still build all Minimal API routes.
+        // Inventory requests fail gracefully instead of being mistaken for GET bodies.
+        using var factory = new BookingApiUnavailableCatalogFactory();
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync($"/events/{Guid.NewGuid():D}/seats");
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
     public async Task Catalog_database_migration_can_be_reapplied_without_duplicating_event()
     {
         await using var postgres = new PostgreSqlBuilder("postgres:17-alpine").Build();

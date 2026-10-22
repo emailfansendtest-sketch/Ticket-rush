@@ -16,6 +16,7 @@ public sealed class HttpInventoryService(HttpClient client, IHttpContextAccessor
 {
     public async Task<IReadOnlyList<SeatSummary>> ListSeatsAsync(Guid eventId, CancellationToken ct)
     {
+        RequireConfiguredEndpoint();
         using var response = await client.GetAsync($"events/{eventId:D}/seats", ct);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<SeatSummary[]>(cancellationToken: ct)
@@ -24,6 +25,7 @@ public sealed class HttpInventoryService(HttpClient client, IHttpContextAccessor
 
     public async Task<HoldView?> GetHoldAsync(Guid holdId, Guid buyerId, CancellationToken ct)
     {
+        RequireConfiguredEndpoint();
         using var request = new HttpRequestMessage(HttpMethod.Get, $"holds/{holdId:D}");
         ForwardAuthorization(request);
         using var response = await client.SendAsync(request, ct);
@@ -39,6 +41,7 @@ public sealed class HttpInventoryService(HttpClient client, IHttpContextAccessor
     public async Task<OperationResult<HoldView>> HoldAsync(Guid eventId, Guid buyerId,
         string? idempotencyKey, string[]? requestedCodes, CancellationToken ct)
     {
+        RequireConfiguredEndpoint();
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"events/{eventId:D}/holds")
         {
@@ -70,6 +73,13 @@ public sealed class HttpInventoryService(HttpClient client, IHttpContextAccessor
         };
         // Preserve stable result status; never require an upstream error body.
         return new(kind, Error: $"Inventory rejected reservation ({(int)response.StatusCode}).");
+    }
+
+    private void RequireConfiguredEndpoint()
+    {
+        if (client.BaseAddress is null)
+            throw new HttpRequestException(
+                "Inventory service is unavailable: Inventory:BaseUrl is not configured.");
     }
 
     private void ForwardAuthorization(HttpRequestMessage request)

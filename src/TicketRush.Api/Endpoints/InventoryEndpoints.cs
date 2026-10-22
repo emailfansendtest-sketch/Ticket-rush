@@ -11,7 +11,7 @@ public static class InventoryEndpoints
     public static IEndpointRouteBuilder MapInventoryEndpoints(this IEndpointRouteBuilder endpoints)
     {
         endpoints.MapGet("/events/{eventId:guid}/seats", async (
-            Guid eventId, IInventoryService inventory, CancellationToken ct) =>
+            Guid eventId, [FromServices] IInventoryService inventory, CancellationToken ct) =>
         {
             try { return Results.Ok(await inventory.ListSeatsAsync(eventId, ct)); }
             catch (HttpRequestException)
@@ -27,7 +27,7 @@ public static class InventoryEndpoints
         endpoints.MapGet("/holds/{holdId:guid}", GetHoldAsync).RequireAuthorization();
 
         endpoints.MapPost("/events/{eventId:guid}/holds", async (
-            Guid eventId, CreateHoldRequest request, IInventoryService inventory,
+            Guid eventId, CreateHoldRequest request, [FromServices] IInventoryService inventory,
             HoldCheckoutProof proof, HttpContext http, CancellationToken ct) =>
         {
             Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(http.User);
@@ -66,7 +66,7 @@ public static class InventoryEndpoints
 
     private static async Task<IResult> GetHoldAsync(
         Guid holdId, [FromQuery] Guid? buyerId, ClaimsPrincipal user,
-        IInventoryService inventory, CancellationToken ct)
+        [FromServices] IInventoryService inventory, CancellationToken ct)
     {
         Guid? authenticatedBuyer = BuyerIdentity.FromPrincipal(user);
         if (authenticatedBuyer is null || (buyerId.HasValue && buyerId.Value != authenticatedBuyer.Value))

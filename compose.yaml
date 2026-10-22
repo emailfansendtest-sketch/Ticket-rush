@@ -291,7 +291,7 @@ services:
       Auth__Audience: ticketrush-apis
       Auth__AllowInsecureHttpMetadata: "true"
       HoldProof__KeyBase64: "${HOLD_PROOF_KEY_BASE64:?Run scripts/Initialize-Dev-Hold-Proof.ps1 first}"
-      ConnectionStrings__BookingDb: Host=postgres;Port=5432;Database=ticketrush;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable
+      LegacyBooking__Enabled: "false"
       Catalog__BaseUrl: http://catalog-api:8080/
       Inventory__BaseUrl: http://inventory-api:8080/
     ports:
@@ -299,8 +299,6 @@ services:
     depends_on:
       keycloak:
         condition: service_started
-      migrate:
-        condition: service_completed_successfully
       catalog-api:
         condition: service_started
       inventory-api:

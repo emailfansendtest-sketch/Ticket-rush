@@ -52,7 +52,7 @@ instead of a duplicate legacy `TicketOrder` row. This is a preparatory ownership
 change **inside the existing shared Booking database**, not a separate Inventory
 DB yet. `README-STEP2.3O1-APPLY.md` covers migration, validation and the next cutover.
 
-### Phase 2.3o.2a — Inventory HTTP boundary (pending local validation)
+### Phase 2.3o.2a — Inventory HTTP boundary (validated by developer, October 22, 2026)
 
 - [ ] Build/test `TicketRush.Inventory.Api` and the Booking HTTP adapter.
 - [ ] Validate cross-service JWT identity and hold proof on the Booking API.
@@ -63,3 +63,12 @@ DB yet. `README-STEP2.3O1-APPLY.md` covers migration, validation and the next cu
 legacy synchronous `/orders` still share Booking PostgreSQL. The physical
 Inventory database extraction is Phase 2.3o.2b, **not complete**.
 
+
+### Phase 2.3o.2b — Retire legacy Booking checkout (awaiting local validation)
+
+- [ ] Normal gateway does not register or receive BookingDbContext/database credentials.
+- [ ] Legacy `/orders` route returns 410 Gone; signed-proof asynchronous Ordering `/checkouts` remains the supported path.
+- [ ] Existing Phase 1 HTTP tests opt into explicit Development compatibility mode.
+- [ ] Build/tests and gateway retirement, Inventory bridge, saga, payment-void, notification smoke scripts pass.
+
+**Not yet a DB split:** Inventory API and workers continue to use the shared Booking DB. Physical ownership and historical-data migration are scheduled for Phase 2.3o.2c.

@@ -13,6 +13,7 @@ using TicketRush.Catalog;
 using TicketRush.Domain;
 using TicketRush.Infrastructure;
 using TicketRush.Inventory;
+using TicketRush.Ordering;
 using TicketRush.IntegrationTests.Utilities;
 using Xunit;
 
@@ -365,6 +366,18 @@ public sealed class ApiContractIntegrationTests
             // Cross-service forwarding is tested separately by CatalogServiceHttpTests.
             builder.ConfigureTestServices(services =>
             {
+                // WebApplicationFactory adds app configuration after the app's initial
+                // service-registration decisions. This isolated Phase-1 test host
+                // must opt into its legacy PostgreSQL services explicitly.
+                services.AddDbContext<BookingDbContext>(options =>
+                    options.UseNpgsql(connectionString));
+                services.AddScoped<InventoryService>();
+                services.AddScoped<IInventoryCheckout>(
+                    sp => sp.GetRequiredService<InventoryService>());
+                services.RemoveAll<IInventoryService>();
+                services.AddScoped<IInventoryService>(
+                    sp => sp.GetRequiredService<InventoryService>());
+                services.AddScoped<IOrderingService, OrderingService>();
                 services.RemoveAll<IEventCatalog>();
                 services.AddSingleton<IEventCatalog>(new FixedDemoEventCatalog());
                 TestBuyerAuthentication.Configure(services);
@@ -386,6 +399,7 @@ public sealed class ApiContractIntegrationTests
                 configuration.AddInMemoryCollection(new Dictionary<string, string?>
                 {
                     ["ConnectionStrings:BookingDb"] = connectionString,
+                    ["LegacyBooking:Enabled"] = "true",
                     ["HoldProof:KeyBase64"] = TestHoldProofKey.Value,
                     ["Auth:Authority"] = "http://keycloak:8080/realms/ticketrush",
                     ["Auth:Audience"] = "ticketrush-apis",

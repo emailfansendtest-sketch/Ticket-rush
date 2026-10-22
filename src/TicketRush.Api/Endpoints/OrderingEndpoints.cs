@@ -37,6 +37,27 @@ public static class OrderingEndpoints
         var order = await ordering.GetOrderAsync(orderId, buyer.Value, ct);
         return order is null ? Results.NotFound() : Results.Ok(order);
     }
+
+    /// <summary>
+    /// Retire the legacy transaction-spanning routes in the distributed deployment.
+    /// Do not forward these requests to /checkouts: checkout requires a signed hold
+    /// proof and a different asynchronous response contract (HTTP 202).
+    /// </summary>
+    public static IEndpointRouteBuilder MapRetiredLegacyOrderingEndpoints(
+        this IEndpointRouteBuilder endpoints)
+    {
+        static IResult Retired() => Results.Json(new
+        {
+            error = "Legacy synchronous checkout has been retired.",
+            replacement = "POST /checkouts on the Ordering API using a signed hold proof",
+            guidance = "Use the HoldProof returned when creating the hold."
+        }, statusCode: StatusCodes.Status410Gone);
+
+        endpoints.MapPost("/orders", Retired).RequireAuthorization();
+        endpoints.MapGet("/orders/{orderId:guid}", Retired).RequireAuthorization();
+        return endpoints;
+    }
+
 }
 
 public sealed record ConfirmOrderRequest(
