@@ -19,6 +19,8 @@
     <ProjectReference Include="../../src/TicketRush.Ordering/TicketRush.Ordering.csproj" />
     <ProjectReference Include="../../src/TicketRush.Ordering.Persistence/TicketRush.Ordering.Persistence.csproj" />
     <ProjectReference Include="../../src/TicketRush.Payment.Persistence/TicketRush.Payment.Persistence.csproj" />
+    <ProjectReference Include="../../src/TicketRush.Notification.Persistence/TicketRush.Notification.Persistence.csproj" />
+    <ProjectReference Include="../../src/TicketRush.Ordering.SagaWorker/TicketRush.Ordering.SagaWorker.csproj" />
     <ProjectReference Include="../../src/TicketRush.Ordering.Api/TicketRush.Ordering.Api.csproj" />
   </ItemGroup>
 </Project>

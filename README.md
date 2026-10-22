@@ -174,3 +174,7 @@ Payment authorization schedules the Inventory sale through the existing transact
 outbox and saga. Historical Ordering intents keep their Inventory-only behavior.
 See [README-STEP2.3L-APPLY.md](README-STEP2.3L-APPLY.md) for migration,
 validation, sandbox limitations, and end-to-end smoke-test commands.
+
+## Phase 2.3n: simulated Notification service
+
+Ordering now atomically appends a terminal checkout notification to its existing outbox on `Completed` and `Failed` transitions. A new independent Notification worker consumes these events from RabbitMQ and stores deduplicated **simulated delivery receipts** in a separate PostgreSQL database. No email/SMS is sent. Read `README-STEP2.3N-APPLY.md` for migration, tests and smoke-test commands.

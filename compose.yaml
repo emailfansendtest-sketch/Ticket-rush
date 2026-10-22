@@ -67,6 +67,44 @@ services:
       rabbitmq:
         condition: service_healthy
     restart: unless-stopped
+  notification-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ticketrush
+      POSTGRES_PASSWORD: localdevonly
+      POSTGRES_DB: ticketrush_notification
+    ports:
+      - "127.0.0.1:5443:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketrush -d ticketrush_notification"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - ticket_notification_pg:/var/lib/postgresql/data
+  notification-migrate:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Notification.DbMigrator/Dockerfile
+    environment:
+      ConnectionStrings__NotificationDb: "Host=notification-postgres;Port=5432;Database=ticketrush_notification;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+    depends_on:
+      notification-postgres:
+        condition: service_healthy
+    restart: "no"
+  notification-worker:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Notification.Worker/Dockerfile
+    environment:
+      ConnectionStrings__NotificationDb: "Host=notification-postgres;Port=5432;Database=ticketrush_notification;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+      RabbitMq__Uri: "amqp://ticketrush:localdevonly@rabbitmq:5672/"
+    depends_on:
+      notification-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
   ordering-postgres:
     image: postgres:17-alpine
     environment:
@@ -251,4 +289,5 @@ volumes:
   ticket_catalog_pg:
   ticket_ordering_pg:
   ticket_payment_pg:
+  ticket_notification_pg:
   ticket_rabbitmq:

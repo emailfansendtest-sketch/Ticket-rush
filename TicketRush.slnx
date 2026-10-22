@@ -20,5 +20,8 @@
   <Project Path="src/TicketRush.Payment.Persistence/TicketRush.Payment.Persistence.csproj" />
   <Project Path="src/TicketRush.Payment.DbMigrator/TicketRush.Payment.DbMigrator.csproj" />
   <Project Path="src/TicketRush.Payment.Worker/TicketRush.Payment.Worker.csproj" />
+  <Project Path="src/TicketRush.Notification.Persistence/TicketRush.Notification.Persistence.csproj" />
+  <Project Path="src/TicketRush.Notification.DbMigrator/TicketRush.Notification.DbMigrator.csproj" />
+  <Project Path="src/TicketRush.Notification.Worker/TicketRush.Notification.Worker.csproj" />
   <Project Path="tests/TicketRush.IntegrationTests/TicketRush.IntegrationTests.csproj" />
 </Solution>

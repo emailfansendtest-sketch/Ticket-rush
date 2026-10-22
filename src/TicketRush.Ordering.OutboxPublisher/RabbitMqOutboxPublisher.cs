@@ -3,6 +3,7 @@ using System.Text;
 using RabbitMQ.Client;
 using TicketRush.Ordering.Persistence;
 using TicketRush.BuildingBlocks.Contracts.Payment;
+using TicketRush.BuildingBlocks.Contracts.Notification;
 
 namespace TicketRush.Ordering.OutboxPublisher;
 
@@ -26,6 +27,9 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
     public const string VoidRoutingKey = "payment.void-requested.v1";
     public const string VoidQueue = "ticket.payment.void-requested.v1";
     public const string VoidDeadQueue = "ticket.payment.void-requested.dead.v1";
+    public const string NotificationRoutingKey = "notification.checkout-finalized.v1";
+    public const string NotificationQueue = "ticket.notification.checkout-finalized.v1";
+    public const string NotificationDeadQueue = "ticket.notification.checkout-finalized.dead.v1";
 
     public async Task PublishAsync(OutboxMessage message, CancellationToken ct)
     {
@@ -35,6 +39,7 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
             "InventorySaleRequestedV1" => InventoryRoutingKey,
             nameof(PaymentAuthorizationRequestedV1) => PaymentRoutingKey,
             nameof(PaymentVoidRequestedV1) => VoidRoutingKey,
+            nameof(CheckoutNotificationRequestedV1) => NotificationRoutingKey,
             _ => throw new InvalidOperationException($"Unknown outbox message type: {message.MessageType}")
         };
 
@@ -116,6 +121,23 @@ public sealed class RabbitMqOutboxPublisher(IConfiguration configuration) : IOut
         await channel.QueueDeclareAsync(VoidQueue, durable: true, exclusive: false,
             autoDelete: false, arguments: voidArgs, cancellationToken: ct);
         await channel.QueueBindAsync(VoidQueue, Exchange, VoidRoutingKey,
+            arguments: null, cancellationToken: ct);
+
+        // Must match NotificationWorker's queue arguments, or a channel-level
+        // PRECONDITION_FAILED will prevent the publisher from confirming any message.
+        await channel.QueueDeclareAsync(NotificationDeadQueue,
+            durable: true, exclusive: false, autoDelete: false,
+            arguments: null, cancellationToken: ct);
+        await channel.QueueBindAsync(NotificationDeadQueue, InventoryDeadExchange,
+            NotificationRoutingKey, arguments: null, cancellationToken: ct);
+        var notificationArgs = new Dictionary<string, object?>
+        {
+            ["x-dead-letter-exchange"] = InventoryDeadExchange,
+            ["x-dead-letter-routing-key"] = NotificationRoutingKey
+        };
+        await channel.QueueDeclareAsync(NotificationQueue, durable: true, exclusive: false,
+            autoDelete: false, arguments: notificationArgs, cancellationToken: ct);
+        await channel.QueueBindAsync(NotificationQueue, Exchange, NotificationRoutingKey,
             arguments: null, cancellationToken: ct);
 
         var properties = new BasicProperties

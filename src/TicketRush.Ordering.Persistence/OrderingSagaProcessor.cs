@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using TicketRush.BuildingBlocks.Contracts.Checkout;
 using TicketRush.BuildingBlocks.Contracts.Payment;
+using TicketRush.BuildingBlocks.Contracts.Notification;
 
 namespace TicketRush.Ordering.Persistence;
 
@@ -182,6 +183,7 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
                 order.State = CheckoutState.Failed;
                 order.NextRecoveryAtUtc = null;
                 order.RecoveryNeedsAttention = false;
+                AddTerminalNotification(order, nameof(CheckoutState.Failed), reason, now);
             }
             else
             {
@@ -296,6 +298,9 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
                 order.RecoveryAttempts = 0;
                 order.NextRecoveryAtUtc = Truncate(now.AddMinutes(2));
             }
+            AddTerminalNotification(order,
+                target == CheckoutState.Completed ? nameof(CheckoutState.Completed) : nameof(CheckoutState.Failed),
+                reason, Truncate(clock.GetUtcNow()));
             db.ResultInbox.Add(new OrderingResultInboxMessage
             {
                 MessageId = messageId, OrderId = orderId, HoldId = holdId,
@@ -379,6 +384,24 @@ public sealed class OrderingSagaProcessor(OrderingDbContext db, TimeProvider clo
             db.ChangeTracker.Clear();
             throw;
         }
+    }
+
+    // Same transaction as the authoritative terminal saga transition.
+    // Existing (OrderId, MessageType) outbox uniqueness guarantees one notification per checkout.
+    private void AddTerminalNotification(OrderIntent order, string outcome, string? reason,
+        DateTimeOffset now)
+    {
+        var notificationId = Guid.CreateVersion7();
+        var notification = new CheckoutNotificationRequestedV1(
+            notificationId, order.Id, order.BuyerId, outcome, reason, now);
+        db.OutboxMessages.Add(new OutboxMessage
+        {
+            MessageId = notificationId,
+            OrderId = order.Id,
+            MessageType = nameof(CheckoutNotificationRequestedV1),
+            PayloadJson = JsonSerializer.Serialize(notification, JsonOptions),
+            CreatedAtUtc = now
+        });
     }
 
     private static void ValidatePaymentCommand(OutboxMessage outbox, OrderIntent order)
