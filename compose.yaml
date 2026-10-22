@@ -29,6 +29,44 @@ services:
       retries: 15
     volumes:
       - ticket_catalog_pg:/var/lib/postgresql/data
+  payment-postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ticketrush
+      POSTGRES_PASSWORD: localdevonly
+      POSTGRES_DB: ticketrush_payment
+    ports:
+      - "127.0.0.1:5442:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ticketrush -d ticketrush_payment"]
+      interval: 3s
+      timeout: 2s
+      retries: 15
+    volumes:
+      - ticket_payment_pg:/var/lib/postgresql/data
+  payment-migrate:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Payment.DbMigrator/Dockerfile
+    environment:
+      ConnectionStrings__PaymentDb: "Host=payment-postgres;Port=5432;Database=ticketrush_payment;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+    depends_on:
+      payment-postgres:
+        condition: service_healthy
+    restart: "no"
+  payment-worker:
+    build:
+      context: .
+      dockerfile: src/TicketRush.Payment.Worker/Dockerfile
+    environment:
+      ConnectionStrings__PaymentDb: "Host=payment-postgres;Port=5432;Database=ticketrush_payment;Username=ticketrush;Password=localdevonly;GSS Encryption Mode=Disable"
+      RabbitMq__Uri: "amqp://ticketrush:localdevonly@rabbitmq:5672/"
+    depends_on:
+      payment-migrate:
+        condition: service_completed_successfully
+      rabbitmq:
+        condition: service_healthy
+    restart: unless-stopped
   ordering-postgres:
     image: postgres:17-alpine
     environment:
@@ -211,4 +249,5 @@ volumes:
   ticket_pg:
   ticket_catalog_pg:
   ticket_ordering_pg:
+  ticket_payment_pg:
   ticket_rabbitmq:

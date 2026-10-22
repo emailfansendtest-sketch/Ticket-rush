@@ -37,12 +37,9 @@ internal static class TestBuyerAuthentication
                 !Guid.TryParse(header[7..], out Guid buyer) || buyer == Guid.Empty)
                 return Task.FromResult(AuthenticateResult.NoResult());
             var identity = new ClaimsIdentity(
-                new[] { new Claim("sub", buyer.ToString("D")) }, 
-                TestBuyerAuthentication.Scheme );
+                new[] { new Claim("sub", buyer.ToString("D")) }, TestBuyerAuthentication.Scheme);
             return Task.FromResult(AuthenticateResult.Success(
-                new AuthenticationTicket(
-                    new ClaimsPrincipal(identity), 
-                    TestBuyerAuthentication.Scheme )));
+                new AuthenticationTicket(new ClaimsPrincipal(identity), TestBuyerAuthentication.Scheme)));
         }
     }
 }

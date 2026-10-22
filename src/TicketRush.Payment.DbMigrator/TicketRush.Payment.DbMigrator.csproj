@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../TicketRush.Payment.Persistence/TicketRush.Payment.Persistence.csproj" />
+  </ItemGroup>
+</Project>

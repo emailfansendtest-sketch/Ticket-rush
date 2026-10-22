@@ -17,5 +17,8 @@
   <Project Path="src/TicketRush.Infrastructure/TicketRush.Infrastructure.csproj" />
   <Project Path="src/TicketRush.Api/TicketRush.Api.csproj" />
   <Project Path="src/TicketRush.DbMigrator/TicketRush.DbMigrator.csproj" />
+  <Project Path="src/TicketRush.Payment.Persistence/TicketRush.Payment.Persistence.csproj" />
+  <Project Path="src/TicketRush.Payment.DbMigrator/TicketRush.Payment.DbMigrator.csproj" />
+  <Project Path="src/TicketRush.Payment.Worker/TicketRush.Payment.Worker.csproj" />
   <Project Path="tests/TicketRush.IntegrationTests/TicketRush.IntegrationTests.csproj" />
 </Solution>

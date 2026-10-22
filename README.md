@@ -157,3 +157,8 @@ Booking returns `holdProof` from hold POST; Ordering requires it for HTTP checko
 ### Phase 2.3j — authenticated buyer API (local OIDC demonstration)
 
 Booking and Ordering now validate bearer JWTs from a Keycloak development realm. Hold creation/replay, hold reads, both checkout paths, and order-status reads are protected and correlated to the authenticated `sub` UUID. A signed hold proof remains required for distributed checkout. Anonymous Catalog and seat availability queries remain available. See [README-STEP2.3J-APPLY.md](README-STEP2.3J-APPLY.md) for local setup, JWT smoke testing and security limitations.
+
+
+## Phase 2.3k — Payment sandbox
+
+See [README-STEP2.3K-APPLY.md](README-STEP2.3K-APPLY.md). Independent Payment PostgreSQL inbox/outbox and RabbitMQ workers. **Authorization simulation only; not yet part of Ordering checkout saga; no actual charges or captures.**
