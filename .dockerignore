@@ -4,3 +4,7 @@
 .git
 TestResults
 artifacts
+backups
+*.dump
+*.backup
+*.sql.gz

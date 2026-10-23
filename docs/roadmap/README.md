@@ -1,54 +1,45 @@
-# Implementation phases and exit criteria
+# TicketRush implementation roadmap
 
-## Phase 1 — modular monolith (26 tests reported passing; Docker smoke not yet confirmed)
+This is the **current status summary for the Phase 2.3r source snapshot (23 October 2026)**. Historic root-level `README-STEP*.md` documents and earlier phases' ADRs describe their own implementation dates; they are not reliable as a live project-status summary.
 
-Catalog, Inventory and Ordering are now separate assemblies in one ASP.NET Core host. PostgreSQL remains authoritative, with one shared EF Core DbContext and atomic checkout transaction. **Not yet independent microservices.**
+## Phase 1 — transactional booking baseline — completed
 
-- [x] Solution, working API, PostgreSQL migrations, Docker migration job
-- [x] Catalog and Inventory extracted from API / Infrastructure
-- [x] Ordering owns checkout idempotency; Inventory owns seat transitions
-- [x] Multi-seat concurrency, expiry/reclaim, and checkout rollback tests reported passing
-- [x] Developer verified build and 26 integration tests on October 20, 2026, including expiry/HTTP fixes
-- [ ] Run Compose smoke and document the final Phase 1 test evidence (docs/phase1-completion.md)
-- [ ] Optional local-demo hardening: bounded HTTP payloads, structured logging, readiness endpoint
+- [x] ASP.NET Core/EF Core/PostgreSQL booking domain and migrations.
+- [x] Atomic seat holds, expiry/reassignment, idempotency, concurrent checkout, and real-PostgreSQL integration tests.
+- [x] Initial Catalog/Inventory/Ordering module boundaries.
 
-**Exit:** the HTTP workflow and existing real-PostgreSQL concurrency suite pass without double-sold seats. Do not represent this as proof of production-scale load, independent deployment, payment reliability, or authentication.
+## Phase 2 — independently persisted distributed checkout — completed through 2.3r
 
-## Phase 2 — extract microservices
+- [x] Catalog service and PostgreSQL ownership.
+- [x] Ordering-owned database, checkout-intake API, and transactional outbox.
+- [x] RabbitMQ command/result publishers, inbox deduplication, and persistent saga worker.
+- [x] Keycloak JWT identity checks and signed hold-proof admission for distributed checkout.
+- [x] Payment simulator, asynchronous authorization gate, authorization-void compensation.
+- [x] Simulated Notification worker with deduplicated persistent receipts.
+- [x] Inventory HTTP API, independently owned PostgreSQL database, EF migrations and guarded historical cutover tool.
+- [x] Normal Booking gateway no longer owns a Booking database connection; legacy synchronous `/orders` returns HTTP 410.
+- [x] Local reliability drills: Inventory-consumer outage (2.3p), RabbitMQ outage/outbox recovery (2.3q), repeated terminal checkout fact (2.3r).
 
-- Step 2.1: Contracts patch with **29 tests reported passing** and pushed to GitHub (October 20, 2026).
-- Step 2.2: Catalog-host/database extraction prepared; 32 integration tests expected after dependency-failure handling test, pending local execution. See `docs/phase2-catalog-extraction.md`.
+**Important limitation:** These are validated local demonstration workflows, not an external payment integration, measured multi-replica deployment, full operational monitoring stack or production readiness proof. The checkout saga is custom RabbitMQ.Client-based code, not MassTransit.
 
+## Phase 3 — traffic/performance and horizontal scale — next
 
-- [ ] Extract Inventory service/database owner, Catalog read API and Ordering service
-- [ ] Add RabbitMQ (MassTransit v8 licensing verified before use) and transactional outbox/inbox
-- [ ] Orchestrated checkout saga with fake Payment adapter and compensation
-- [ ] Add Keycloak; move BuyerId from caller to authenticated identity
-- [ ] Aspire AppHost + OpenTelemetry + Testcontainers for broker and DB
+- [ ] Reproducible read-only HTTP baseline, JSON results and container snapshots (planned Phase 3a; **not present in this source snapshot**).
+- [ ] Isolated concurrent seat-hold contention baseline and correctness/load reports.
+- [ ] Redis/Valkey-based waiting room/admission control with PostgreSQL authority preserved.
+- [ ] SignalR seat availability snapshots/updates, reconnect and reconciliation.
+- [ ] Docker/Kubernetes multi-replica tests, load shedding, health/readiness, and measured scaling curves.
+- [ ] Operational tracing, metrics and recovery runbooks suitable for demonstrating failures and bottlenecks.
 
-**Exit:** force-killing Payment mid-checkout loses no completed orders; saga resumes or compensates idempotently.
+## Phase 4 — memory/GC and optional AOT
 
-## Phase 3 — scale-out
-
-- [ ] Redis/Valkey admission/waiting-room; fail-closed admission policy
-- [ ] Redis holds only as acceleration, with PostgreSQL as authority and reconciliation
-- [ ] SignalR seat-map updates and reliable reconnect/snapshot behavior
-- [ ] 3+ replica deployments with Helm; shared keys, gateway-global rate limits, autoscaling
-- [ ] k6/NBomber reproducible load tests and failures (Redis, broker, pod)
-
-**Exit:** zero oversell under simultaneous load; published scale, throughput and p95/p99 charts.
-
-## Phase 4 — memory and AOT
-
-- [ ] Compact bitset seat map with measured allocations
-- [ ] Benchmarks for parsers/serializers/pools and GC under container limits
-- [ ] Inventory Native AOT only if its dependencies permit; compare against JIT
-- [ ] Produce `docs/memory.md` with actual measurements
-
-**Exit:** reproducible before/after memory/latency results, not hand-picked theoretical numbers.
+- [ ] Measure managed allocations, object lifetime, working set, GC events under representative load.
+- [ ] Benchmark compact/bitset seat maps, serialization, pooling and incremental updates **against the current baseline**.
+- [ ] Assess Native AOT only where compatible, and report its trade-offs.
 
 ## Phase 5 — presentation
 
-- [ ] README hero architecture, short GIF, CI badges
-- [ ] ADRs for key tradeoffs, chaos runbook, failure evidence
-- [ ] Explicit honest scope, limitations and measured benchmarks
+- [ ] Measured comparison reports, architecture screenshots/demo, and trade-off ADRs.
+- [ ] Reproducible CI or documented local validation, with no invented benchmarks.
+
+See the [root README](../../README.md) for correct local setup, the current API, and verification scripts; see [Phase 2 implementation history](../phase2-work-plan.md) for milestone summaries.

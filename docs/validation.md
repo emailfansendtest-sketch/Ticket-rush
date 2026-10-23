@@ -1,42 +1,53 @@
-# Phase 1 validation checklist
+# Verification guide — Phase 2.3r snapshot
 
-**Developer-verified baseline (October 20, 2026):** Catalog, Inventory and Ordering modules build in Visual Studio 2026, and all **24** tests (including initial HTTP tests) passed. This completion patch adds two expiry tests and updates HTTP Location verification; the developer has **not yet confirmed** the new code passes locally.
+This guide lists **current** validation entry points. Earlier scripts and individual patch README files may target prior stages. See [root README](../README.md) for the API, setup, and safety notes.
 
-## Run this patch
+## Build and integration tests
 
 ```powershell
-dotnet restore .\TicketRush.slnx
-dotnet build .\TicketRush.slnx -c Release
-dotnet test .\TicketRush.slnx -c Release --no-build
-docker compose up --build
+# Requires a running Docker engine for Testcontainers.
+dotnet restore TicketRush.slnx
+dotnet build TicketRush.slnx -c Release
+dotnet test TicketRush.slnx -c Release --no-build
 ```
 
-**Expected:** 26 tests if the two new expiry tests pass. The API tests use PostgreSQL Testcontainers and ASP.NET Core TestServer. The `Microsoft.AspNetCore.Mvc.Testing` package remains centrally pinned to `10.0.13`. Run `scripts/Verify-Phase1-Docker.ps1` after Compose starts and see `docs/phase1-completion.md`.
+The user reported the suite passing after Phase 2.3r. Avoid fixed hardcoded test totals, because the suite evolves and theories may generate multiple cases.
 
-## Verified by the previously passing service/database tests
+## Normal deployment checks
 
-- [x] Competition for seats, including 1,000 hold attempts on 100 seats
-- [x] Multi-seat requests are all-or-nothing
-- [x] Same-buyer and different-buyer idempotency-key semantics
-- [x] Concurrent duplicate checkout cannot duplicate orders
-- [x] An expired hold can be reclaimed and cannot later be confirmed by its former buyer
-- [x] Different holds racing on one checkout key leave the loser unmodified
-- [x] Inventory checkout preparation remains inside Ordering's transaction
-- [x] EF migrations and demo seed initialization work in Testcontainers
+```powershell
+.\scripts\Verify-Inventory-Database-Separation.ps1
+.\scripts\Verify-Legacy-Checkout-Retired.ps1
+```
 
-## HTTP tests (two previously verified; expiry and Location corrections pending)
+These establish important properties of the *running* Compose deployment but are not substitutes for transaction/idempotency integration tests.
 
-- [x] `GET /events`, `GET /events/{id}/seats`, `POST /events/{id}/holds`, `POST /orders`, `GET /health/live` respond as expected
-- [x] HTTP `201` versus `200` idempotent replays, `409` seat conflict, `400` invalid request, `404` missing seat
-- [x] HTTP checkout persists one order and final seat state in PostgreSQL
-- [ ] Location headers resolve to hold/order GET endpoints, with buyer filtering and 400/404 handling
-- [ ] Expired held seats are read as Available without modifying persisted seat rows
+## End-to-end checkout and compensation
 
-## Remaining limitations and next phase
+```powershell
+.\scripts\Verify-Checkout-Api-Saga.ps1
+.\scripts\Verify-Payment-Void-Compensation.ps1
+.\scripts\Verify-Notification-Service.ps1
+```
 
-- Buyer IDs are supplied by the caller: **do not expose this demo API publicly**. Compose binds the API and PostgreSQL host ports to `127.0.0.1` only. Authentication/authorization is Phase 2.
-- Expired-hold POST replays and GET resource reads now both report logical `Expired` status, even after the seat is reclaimed.
-- Payments, RabbitMQ, inbox/outbox, sagas and per-service persistence are **not** part of Phase 1.
-- Current modules share one EF Core DbContext and transaction. This is intentional and must not be mistaken for isolation between separately deployed services.
-- No claims about throughput, p95/p99, memory allocation, or three-replica scale-out until measured in Phases 3–4.
-- A request-size policy, structured operational logging, and readiness checks remain worthwhile follow-up hardening; do not infer their existence from the passing tests.
+These can consume demo seats; use only against the development deployment. The Payment and Notification integrations are simulations.
+
+## Disruptive resilience drills (idle disposable development stack only)
+
+```powershell
+.\scripts\Verify-Inventory-Consumer-Outage-Recovery.ps1 -AllowDisruption
+.\scripts\Verify-RabbitMq-Outage-Outbox-Recovery.ps1 -AllowDisruption
+.\scripts\Verify-Checkout-Fact-Ambiguous-Ack-Replay.ps1 -AllowDisruption
+```
+
+Scripts temporarily stop components or deliberately replay a test event, and may leave data requiring manual investigation after a failure. Read their matching historical runbooks for preconditions and restoration behavior.
+
+`Verify-Phase1-Docker.ps1` uses the retired synchronous `/orders` route and is not valid against the normal Phase 2.3r Compose configuration. Keep it as historical compatibility coverage rather than as the current smoke gate.
+
+## Inventory migration
+
+Fresh installs require explicit Inventory demo seeding if test seats are needed. Existing installs require the maintenance-window cutover and snapshot comparison. Read [Phase 2.3o.2c cutover](../README-STEP2.3O2C-APPLY.md); **do not reset Docker volumes** to fix a data migration problem.
+
+## What has not been measured
+
+No verified large-scale traffic, p95/p99 latency baseline, multi-replica scaling curve, or GC/allocation comparison is present in this Phase 2.3r snapshot. Those belong to the next project phases.

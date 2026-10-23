@@ -1,182 +1,171 @@
-> **Phase 2.3o.2c:** Independent Inventory database cutover. Existing deployments MUST follow [`README-STEP2.3O2C-APPLY.md`](README-STEP2.3O2C-APPLY.md) before starting services.
+# TicketRush — distributed flash-sale ticket booking (.NET 10)
 
-> **Phase 2.3m**: simulated Payment authorization void compensation is implemented as a pending local-validation increment. See [README-STEP2.3M-APPLY.md](README-STEP2.3M-APPLY.md).
+**Status: Phase 2.3r validated locally; Phase 3 performance work is next.** This repository implements a containerized, event-driven checkout demonstration with independently persisted **Catalog, Inventory, Ordering, Payment, and Notification** components. It is a **development portfolio project, not a production ticketing service**. The latest duplicate-checkout-event replay tests and local recovery scripts were reported passing on 23 October 2026.
 
-> Phase 2.3h: missing Inventory results can now be recovered by replaying the original sale command (see `README-STEP2.3H-APPLY.md`).
+**Central invariant:** a seat must never be sold twice. PostgreSQL is authoritative for reservations and sales. RabbitMQ provides asynchronous delivery; PostgreSQL outbox/inbox records and idempotent handlers protect the business workflow against retries and duplicated events.
 
-# TicketRush — flash-sale seat booking (.NET 10)
+> **Existing deployment?** If upgrading a database created before the independent Inventory split, **do not use the fresh-install instructions below**. Follow [Phase 2.3o.2c Inventory cutover](README-STEP2.3O2C-APPLY.md), [scripted copy](README-STEP2.3O2C-SCRIPTED-CUTOVER.md), and [snapshot verification](README-STEP2.3O2C-CUTOVER-CHECK.md). Preserve your Docker volumes. After new Inventory writes, switching back to the old Booking DB is unsafe without reconciliation.
 
-> **Status: Phase 2 Step 2.3b Ordering RabbitMQ outbox publication (local validation pending).** The validated Step 2.2 baseline has 32 passing tests and a passing Docker Compose smoke test. This increment adds an independent Ordering database and atomic Pending-order/outbox writes; the existing Booking HTTP checkout still uses the Phase 1 synchronous transaction.
+## What the project demonstrates
 
-A booking system that evolves from a **modular monolith** into distributed, horizontally scalable services. Its core invariant is: **a seat is never sold twice**. PostgreSQL is the source of truth; later Redis caching/admission does not change this.
+- **Concurrency correctness:** atomic 1–6-seat holds, PostgreSQL row locks, time-limited reservations, idempotent commands, and sale-state constraints.
+- **Distributed checkout:** an Ordering-owned intent and transactional outbox, RabbitMQ delivery, a persistent saga worker, simulated Payment authorization, Inventory sale processing, and simulated terminal Notification receipts.
+- **Failure recovery:** outbox retry after broker outage, Inventory consumer outage recovery, saga redrive, payment-void compensation, and duplicate-event replay without duplicate business effects.
+- **Service ownership:** separately hosted Catalog, Inventory, and Ordering APIs; independent Inventory, Ordering, Payment, Notification, and Catalog PostgreSQL databases. The Booking HTTP API is a transitional gateway, not a database owner in the standard Compose deployment.
+- **Authentication:** local Keycloak OIDC/JWT validation and buyer identity checks; Booking issues a signed temporary hold proof required by the Ordering checkout API.
+- **Verification:** xUnit integration tests with Testcontainers/PostgreSQL and PowerShell Docker Compose smoke/recovery scripts. Measurements of throughput, allocation, and multi-replica scaling are **not** yet published.
 
-## Why a separate project from ASP.NET_MVC_Chat_Test?
+### Architecture (implemented in Phase 2.3r)
 
-The existing chat application demonstrates asynchronous pipelines, SSE and bounded `Channel<T>` queues. TicketRush targets business workflows, database concurrency, failure recovery, idempotency, sagas, autoscaling and low-allocation inventory processing. Keep the chat repo intact; this is a new repository.
-
-## Phase 1: implemented starter scope
-
-- The Phase 1 application started as one ASP.NET Core Minimal API with **Catalog**, **Inventory**, and **Ordering** assemblies. Ordering coordinates checkout via Inventory's transactional checkout interface. After this step, Catalog has its own database and API; Inventory and Ordering continue sharing the original booking database/transaction.
-- PostgreSQL transaction and deterministic `FOR UPDATE` seat-row locks; an event/seat has one row and one status.
-- Atomic holds for 1–6 seats, with expiry timestamps. Expired holds can be reclaimed.
-- Idempotency keys for holds and checkout, backed by database unique indexes.
-- Confirmed checkout sets the held seats to **Sold** in the same transaction that creates its order (no payment integration yet).
-- EF Core 10 context, Npgsql `xmin` row-version mapping, generated `InitialCreate` migration, dedicated `TicketRush.DbMigrator` job and containerized API.
-- xUnit + Testcontainers tests cover booking concurrency, hold expiry, idempotency, migrations, Catalog queries, and Inventory seat projection. The developer confirmed **32 tests after the reviewed Catalog extraction**. Step 2.3a adds eight Ordering-intake test cases (40 expected; local validation pending).
-
-**Important limitations:** authentication is not implemented, the buyer ID is supplied by the caller, checkout is not a payment, there is no waiting room, and Redis/RabbitMQ/sagas/Kubernetes/Aspire/Native AOT are **planned**, not implemented. This local API must not be exposed publicly.
-
-## Quick start (Docker)
-
-Requires Docker Desktop or Docker Engine. For IDE development with .NET 10, use **Visual Studio 2026 (18.0+)** rather than Visual Studio 2022, or use the .NET 10 command-line SDK with VS Code. From repo root:
-
-```bash
-docker compose up --build
+```mermaid
+flowchart LR
+    Client[HTTP client] --> Booking[Booking gateway :8088]
+    Client --> OrderingApi[Ordering API :8091]
+    Booking --> CatalogApi[Catalog API :8090]
+    Booking --> InventoryApi[Inventory API]
+    Auth[Keycloak :8092] -. JWT validation .-> Booking
+    Auth -. JWT validation .-> OrderingApi
+    Auth -. JWT validation .-> InventoryApi
+    CatalogApi --> CatalogDb[(Catalog PostgreSQL)]
+    InventoryApi --> InventoryDb[(Inventory PostgreSQL)]
+    OrderingApi --> OrderingDb[(Ordering PostgreSQL)]
+    OrderingDb --> Outbox[Ordering outbox publisher]
+    Outbox --> MQ[(RabbitMQ)]
+    MQ --> Saga[Ordering saga worker]
+    Saga --> OrderingDb
+    MQ --> Payment[Payment worker]
+    Payment --> PaymentDb[(Payment PostgreSQL)]
+    MQ --> InventoryConsumer[Inventory command consumer]
+    InventoryConsumer --> InventoryDb
+    InventoryDb --> ResultPublisher[Inventory result publisher]
+    ResultPublisher --> MQ
+    MQ --> Notification[Notification worker]
+    Notification --> NotificationDb[(Notification PostgreSQL)]
 ```
 
-Booking API: `http://localhost:8088`; Catalog API: `http://localhost:8090`; Booking PostgreSQL: localhost port `5439`; Catalog PostgreSQL: localhost port `5440`; Ordering PostgreSQL: localhost port `5441`. All published ports bind to **127.0.0.1 only** by Compose because the API has no authentication and the database credentials are development-only. Do not forward these ports or expose this stack on a public network.
+Catalog is read-only in this demo. The legacy Booking PostgreSQL database is retained for compatibility/migration, **not** used for new checkout or Inventory writes in the normal deployment. Checkout is a custom durable RabbitMQ-backed workflow, **not** an installed MassTransit saga.
 
-Compose starts Booking, Catalog and Ordering PostgreSQL containers, runs separate `migrate`, `catalog-migrate`, and `ordering-migrate` jobs, and then starts the Booking and Catalog APIs. The new Ordering database is only used by tests and its migrator in this increment; no Ordering HTTP service or outbox publisher exists yet. The Booking and Catalog migration jobs seed the same fixed demo event ID for their temporary independent roles; Ordering migration creates schema without seeding orders. The old Booking database retains its local event-reference table to satisfy Inventory foreign keys during the transition. `deploy/postgres/001_schema.sql` is legacy material and is **not executed by Compose**. To intentionally reset disposable local data, `docker compose down -v` removes the PostgreSQL volume (all database data is destroyed).
+## Prerequisites
 
-### Try the API
+- .NET 10 SDK and, for Visual Studio users, Visual Studio 2026; Docker Desktop/Engine with Docker Compose enabled.
+- PowerShell for the supplied scripts (developed for a Windows local environment).
+- Sufficient resources to start the multiple databases, RabbitMQ, Keycloak, APIs, and background workers.
+- The application uses **local-only passwords, HTTP, test users, and simulated Payment**. Do not make these Compose services publicly reachable or use the demo realm outside isolated development.
 
-```bash
-curl http://localhost:8088/events
-curl http://localhost:8088/events/11111111-1111-1111-1111-111111111111/seats
+## Quick start — **fresh, disposable** local environment
 
-curl -X POST http://localhost:8088/events/11111111-1111-1111-1111-111111111111/holds \
-  -H 'Content-Type: application/json' \
-  -d '{"buyerId":"22222222-2222-2222-2222-222222222222", "idempotencyKey":"hold-demo-1", "seatCodes":["A-001","A-002"]}'
-```
-
-Copy the `id` from the hold response into the `holdId` field below:
-
-```bash
-curl -X POST http://localhost:8088/orders -H 'Content-Type: application/json' \
-  -d '{"buyerId":"22222222-2222-2222-2222-222222222222", "idempotencyKey":"order-demo-1", "holdId":"<HOLD-ID>"}'
-```
-
-Send the same idempotency key again: expect the same hold/order. A different buyer attempting an already-held seat should get HTTP 409. Simulate an expired hold by waiting 10 minutes; expired **unsold** seats may be reclaimed, but orders never are.
-
-### Run tests
-
-```bash
-dotnet restore TicketRush.slnx
-dotnet build TicketRush.slnx
-dotnet test TicketRush.slnx
-```
-
-Tests create ephemeral PostgreSQL instances via Testcontainers; Docker must be running. The developer reported 32 tests passing before this patch. This adds eight Ordering intake test cases, for 40 expected. Tests require Docker/Testcontainers; the patch author could not run .NET or Docker here.
-
-## Why row locks + a single authoritative seat row?
-
-- A unique `(event_id, seat_code)` key means there is exactly one authoritative allocation row for a seat.
-- `SELECT ... FOR UPDATE`, inside a DB transaction, serializes contenders for the **same** seat, even across API replicas.
-- Reclaiming expired holds is safe because checkout checks ownership/expiry inside the same transaction while locking the hold and seats.
-- `xmin` is an additional optimistic-concurrency safety measure; uniqueness by itself does **not** stop two processes from updating a single row in sequence, so row-level state transitions matter.
-- Lock waits and hot events can constrain performance. This is intentional correctness-first design; measure before replacing it.
-
-## Roadmap
-
-See `docs/architecture.md`, `docs/roadmap/README.md`, and `docs/implementation-notes.md` (supplied by the Copilot proposal). Phase 2 is extracting Catalog first, then independent Inventory and Ordering with RabbitMQ/outbox and a saga; Phase 3 adds Redis admission control, live seat maps, Kubernetes, and scale tests; Phase 4 measures heap allocations, bitset seat-map representation and AOT where useful.
-
-## Phase 1 exit validation
-
-Run `dotnet test TicketRush.slnx` (40 tests expected for Phase 2 Step 2.3a, subject to local verification), `docker compose up -d --build`, and `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Phase1-Docker.ps1`. For the acceptance checklist and accurate 1,000-attempt concurrency description, see [docs/phase1-completion.md](docs/phase1-completion.md).
-
-Known remaining limitations: no authenticated buyer identity, no payment, no measured multi-replica scale or memory benchmarks. This API is a **local demonstration only**, not appropriate for public deployment. Before Phase 2, capture the test result and add a brief Phase 1 architecture/limitations summary. Avoid splitting the shared checkout transaction until distributed saga/outbox design is ready.
-
-## EF model-derived SQL identifiers
-
-Raw PostgreSQL locking queries now use `IEntitySchema<TEntity>` backed by the finalized EF Core model instead of repeating table/column names. See `docs/entity-schema-refactor.md`.
-
-
-## Phase 1 modularization
-
-Catalog event queries are now implemented in `TicketRush.Catalog.Storage` behind `IEventCatalog`; the Booking API uses `HttpEventCatalog`. See [docs/catalog-extraction.md](docs/catalog-extraction.md). The EF migration history remains unchanged; booking invariants are preserved through the service extraction.
-
-## Phase-1 module boundaries
-
-- **Catalog:** the Catalog API and Storage project own event discovery and persistence; `TicketRush.Catalog` exposes its read contract/client.
-- **Inventory:** `TicketRush.Inventory` owns seat availability and `HoldAsync` (including locking, expiry and hold idempotency). `IInventoryService` is the public in-process boundary.
-- **Ordering:** `TicketRush.Ordering` owns checkout idempotency and `TicketOrder` creation. It calls the Inventory checkout port, which locks and updates holds/seats within the same PostgreSQL transaction.
-- `TicketRush.Infrastructure` owns the shared `BookingDbContext`, EF mappings and migrations. No module-specific migration was introduced for these code-only refactorings.
-
-The three module assemblies still reference Infrastructure in Phase 1. They are *not* independent services or independent databases.
-
-
-See `docs/ordering-extraction.md` for the Phase 1 Ordering boundary and validation steps.
-
-## Phase 2 Step 2.2: independently deployed Catalog (local preview)
-
-See `docs/phase2-catalog-extraction.md` and ADR 0008. The existing Booking API
-`GET /events` now calls the Catalog API over HTTP. Inventory/Ordering still use
-local Booking PostgreSQL transactions and the booking event-reference table;
-**do not claim Inventory is yet a standalone microservice.**
+Run from the repository root in PowerShell. These instructions assume the Inventory database **does not contain historical data requiring migration**.
 
 ```powershell
-Invoke-RestMethod http://localhost:8090/events
-Invoke-RestMethod http://localhost:8088/events
+# Generate a random signing key in the git-ignored .env file.
+.\scripts\Initialize-Dev-Hold-Proof.ps1
+
+# Validate Compose configuration, start databases, migration jobs and services.
+docker compose config --quiet
+docker compose up -d --build
+
+# Seed the separate Inventory database with the same 100-seat demo event
+# as Catalog. It is NOT seeded automatically in the normal Compose config,
+# because the migrator also supports non-destructive historical-data cutover.
+docker compose run --rm -e SEED_DEMO_DATA=true inventory-migrate
 ```
 
-Catalog has its own storage context and initial EF migration; the two databases
-can be migrated, deployed and recovered independently. No authentication, event
-provisioning or cross-service consistency mechanism is included in this step.
+The last command is for a new/demo Inventory database only. The demo event ID is `11111111-1111-1111-1111-111111111111`, with seats `A-001` through `A-100`. If you have an existing installation, **do not seed or reset your destination**: follow the cutover runbook linked at the top. If Keycloak is still starting, give the realm import time to finish before obtaining a token.
 
-Catalog forwarding behavior: when Catalog is unavailable, Booking `GET /events` returns HTTP 503; a Catalog request timeout returns HTTP 504 (10-second client timeout). The endpoint does not fall back to stale Booking database event data.
+Development endpoints (bound to **127.0.0.1** on the host):
 
-### Phase 2.3a — Ordering durable intake foundation
+| Endpoint | Service | Purpose |
+| --- | --- | --- |
+| `http://localhost:8088` | Booking gateway | Public event/seat queries; authenticated holds and signed proofs |
+| `http://localhost:8090` | Catalog API | Event list |
+| `http://localhost:8091` | Ordering API | Authenticated `/checkouts` commands and status |
+| `http://localhost:8092` | Keycloak | Development OIDC realm |
+| `http://localhost:15672` | RabbitMQ management | Development diagnostics |
 
-A separate `TicketRush.Ordering.Persistence` project and `ordering-postgres` database now store Pending checkout intents and `CheckoutRequestedV1` outbox messages atomically. This path is not wired to the existing synchronous `/orders` endpoint yet. See [phase2-ordering-intake](docs/phase2-ordering-intake.md).
+PostgreSQL is locally mapped to ports `5439` (legacy Booking), `5440` (Catalog), `5441` (Ordering), `5442` (Payment), `5443` (Notification), and `5444` (Inventory). These are **separate databases**. The Inventory API and RabbitMQ AMQP port are not exposed directly on host ports by Compose.
 
+### Try one authenticated checkout
 
-### Phase 2.3b — RabbitMQ publication
+For a quick end-to-end demonstration, run the already provided script:
 
-See [Phase 2.3b publisher design and test plan](docs/phase2-outbox-publication.md). A dedicated publisher worker reads the Ordering outbox, waits for broker confirmations, and records retry schedules. The existing Booking API remains synchronous and unchanged.
+```powershell
+.\scripts\Verify-Checkout-Api-Saga.ps1
+```
 
-### Phase 2.3e (in progress; validate locally)
+It obtains a development JWT from Keycloak, creates a hold through Booking, submits an asynchronous checkout to Ordering, waits for completion, and verifies downstream database evidence. **It permanently sells one available demo seat.** The `Verify-Notification-Service.ps1` script additionally checks the durable simulated notification receipt.
 
-Ordering saga worker wires CheckoutRequested → InventorySaleRequested via Ordering outbox and InventorySaleCommitted/Rejected → Ordering result inbox and Completed/Failed state. The existing HTTP checkout route remains synchronous. See `README-STEP2.3E-APPLY.md`.
+The HTTP contract is:
 
-## Phase 2.3f — independent HTTP checkout intake (validation pending)
+1. `GET http://localhost:8088/events` and `GET http://localhost:8088/events/{eventId}/seats` are anonymous reads.
+2. Obtain Alice's test token with `.\scripts\Get-Dev-BuyerToken.ps1 -Username alice`. Alice's demo buyer ID is `aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`.
+3. Send an authenticated `POST http://localhost:8088/events/{eventId}/holds` with JSON `{"buyerId":"...","idempotencyKey":"unique-hold-key","seatCodes":["A-001"]}`. The successful response includes a `holdProof` and hold ID.
+4. Send authenticated `POST http://localhost:8091/checkouts` with JSON `{"buyerId":"...","holdId":"...","holdProof":"...","idempotencyKey":"unique-checkout-key"}`.
+5. A first valid request returns **202 Accepted** (durably queued, **not yet purchased**). Poll the authenticated `GET http://localhost:8091/checkouts/{orderId}?buyerId={buyerId}` until the state is `Completed` or `Failed`. Repeated equivalent checkout commands use idempotency and may return **200 OK**.
 
-- New `ordering-api` service: `http://localhost:8091`. It connects only to the independent Ordering PostgreSQL database.
-- `POST /checkouts` with JSON `{ "holdId": "guid", "buyerId": "guid", "idempotencyKey": "unique-per-buyer" }` commits an Ordering intent plus the CheckoutRequestedV1 outbox fact and returns **202 Accepted** with a Location header. Replaying the same buyer/key/hold returns **200 OK** and the current state. Reusing a key for a different hold, or a hold for a different checkout, returns **409 Conflict**. Invalid values return 400.
-- `GET /checkouts/{orderId}?buyerId={buyerId}` returns `{orderId,holdId,state,requestedAtUtc,failureReasonCode}`, where state is `Pending`, `Completed`, or `Failed`. Unknown orders and mismatched buyers return 404; missing buyer ID returns 400. This is only a demonstration of buyer-scoped lookup, **not real authentication**.
-- Existing synchronous `POST /orders` on Booking's API (port 8088) is deliberately unchanged. This is a separate external endpoint, not a gateway replacement for legacy clients.
-- A 202 means **durably accepted**, not seats sold or a payment completed. Inventory validates the hold asynchronously, so an invalid or expired hold can be accepted and later Failed. No payment integration exists yet.
-- No new EF migration is required for this step; it reuses the Ordering-owned intents and result inbox.
-- Tests: six new HTTP integration test cases; expected baseline is 71.
-- Live verification: `powershell -ExecutionPolicy Bypass -File .\scripts\Verify-Checkout-Api-Saga.ps1`, which sells one disposable demo seat.
-- **Do not expose the demo APIs to an untrusted network**: the buyerId request/query value is not a credential. Authentication, authorization, throttling, and saga timeout recovery remain future work.
+**Important:** `POST /orders` and `GET /orders/{id}` on the Booking gateway have been **retired** and return HTTP **410 Gone** for authenticated calls in normal Compose mode. The synchronous checkout remains only in explicit development/test compatibility mode. Do not use older Phase 1 curl examples against the standard distributed deployment.
 
-## Phase 2.3g — Ordering saga timeout/recovery
+## Build and tests
 
-See [`README-STEP2.3G-APPLY.md`](README-STEP2.3G-APPLY.md) for setup and acceptance criteria. Stale Pending orders are durably re-driven using stable outbox message identifiers. Timeouts never imply that Inventory did not sell; exhausted recovery attempts require operator attention rather than forcing a failed sale.
+```powershell
+dotnet restore TicketRush.slnx
+dotnet build TicketRush.slnx -c Release
+dotnet test TicketRush.slnx -c Release --no-build
+```
 
-## Phase 2.3i: signed hold admission proof
+Tests include real PostgreSQL-backed concurrency, migration, API contract, outbox/inbox, saga, Payment, Inventory and Notification scenarios. Docker must be running for Testcontainers tests. **No fixed test count is stated:** use the output of the current suite as the baseline. A passing suite does not by itself establish production load capacity.
 
-Booking returns `holdProof` from hold POST; Ordering requires it for HTTP checkout admission. See `README-STEP2.3I-APPLY.md`. This is a local-demo bearer capability, not full buyer authentication.
+### Smoke and failure-recovery tests
 
-### Phase 2.3j — authenticated buyer API (local OIDC demonstration)
+Non-destructive deployment checks:
 
-Booking and Ordering now validate bearer JWTs from a Keycloak development realm. Hold creation/replay, hold reads, both checkout paths, and order-status reads are protected and correlated to the authenticated `sub` UUID. A signed hold proof remains required for distributed checkout. Anonymous Catalog and seat availability queries remain available. See [README-STEP2.3J-APPLY.md](README-STEP2.3J-APPLY.md) for local setup, JWT smoke testing and security limitations.
+```powershell
+.\scripts\Verify-Inventory-Database-Separation.ps1
+.\scripts\Verify-Legacy-Checkout-Retired.ps1
+```
 
+Representative end-to-end tests (may create/sell demo seats):
 
-## Phase 2.3k — Payment sandbox
+```powershell
+.\scripts\Verify-Inventory-Api-Bridge.ps1
+.\scripts\Verify-Checkout-Api-Saga.ps1
+.\scripts\Verify-Payment-Void-Compensation.ps1
+.\scripts\Verify-Notification-Service.ps1
+```
 
-See [README-STEP2.3K-APPLY.md](README-STEP2.3K-APPLY.md). Independent Payment PostgreSQL inbox/outbox and RabbitMQ workers. **Authorization simulation only; not yet part of Ordering checkout saga; no actual charges or captures.**
+Disruptive, **opt-in** tests; run only on an idle disposable local Compose stack:
 
+```powershell
+.\scripts\Verify-Inventory-Consumer-Outage-Recovery.ps1 -AllowDisruption
+.\scripts\Verify-RabbitMq-Outage-Outbox-Recovery.ps1 -AllowDisruption
+.\scripts\Verify-Checkout-Fact-Ambiguous-Ack-Replay.ps1 -AllowDisruption
+```
 
-## Phase 2.3l — simulated Payment authorization gate
+These scripts stop service components or re-arm a test outbox event, then verify recovery and idempotency. Read the respective [Phase 2.3p](README-STEP2.3P-APPLY.md), [2.3q](README-STEP2.3Q-APPLY.md), and [2.3r](README-STEP2.3R-APPLY.md) guides before using them. The Phase 1 `Verify-Phase1-Docker.ps1` targets the **retired synchronous `/orders` path** and is historical, not a normal-deployment verification script.
 
-New authenticated HTTP checkouts now require Payment authorization before Inventory
-can sell held seats. Payment decline terminates the checkout without selling seats;
-Payment authorization schedules the Inventory sale through the existing transactional
-outbox and saga. Historical Ordering intents keep their Inventory-only behavior.
-See [README-STEP2.3L-APPLY.md](README-STEP2.3L-APPLY.md) for migration,
-validation, sandbox limitations, and end-to-end smoke-test commands.
+## Data migration and safety
 
-## Phase 2.3n: simulated Notification service
+EF Core migrations run through dedicated `*-migrate` containers. Inventory uses its own `InventoryDbContext`, migrations, and `inventory-postgres` data volume. Existing Booking data is migrated **once** under a maintenance window; the copied records include seats, holds, Inventory sale evidence, and durable inbox/outbox state. The cutover tool does not replace Orders in Ordering's separate database.
 
-Ordering now atomically appends a terminal checkout notification to its existing outbox on `Completed` and `Failed` transitions. A new independent Notification worker consumes these events from RabbitMQ and stores deduplicated **simulated delivery receipts** in a separate PostgreSQL database. No email/SMS is sent. Read `README-STEP2.3N-APPLY.md` for migration, tests and smoke-test commands.
+- [Cutover/upgrade procedure](README-STEP2.3O2C-APPLY.md)
+- [Version-controlled copy script](README-STEP2.3O2C-SCRIPTED-CUTOVER.md): `.\scripts\Invoke-Inventory-DataCutover.ps1 -BackupConfirmed -ConfirmCopy`
+- [Pre-restart snapshot verification](README-STEP2.3O2C-CUTOVER-CHECK.md): `.\scripts\Verify-Inventory-Cutover-Copy.ps1`
+
+**Never run `docker compose down -v` on a database you want to preserve.** Retain backups outside Git and never paste signing keys, tokens, database exports, or credentials into pull requests.
+
+## Scope and next development stages
+
+**Implemented and locally reported passing through Phase 2.3r:** transactions, authentication, Catalog/Inventory/Ordering boundaries, simulated Payment and authorization-void compensation, simulated Notification receipts, transactional outbox/inbox, saga retry, and targeted outage/replay tests.
+
+**Not implemented or not demonstrated as of this snapshot:** Redis waiting room/admission control, live seat-map SignalR delivery, Kubernetes/Helm deployment and horizontal-scale measurements, Aspire orchestration, OpenTelemetry-wide tracing/metrics, Native AOT and bitset/GC benchmarks. No real payments, refunds, emails or tickets are issued. The RabbitMQ replay smoke test simulates an ambiguous publisher ACK by republishing the same event; it does not force an actual network-level ACK loss.
+
+**Next: Phase 3.** Establish reproducible load baselines, then investigate concurrent hold contention, Redis admission, and multi-replica throughput with actual measurement evidence. The Phase 3a load-runner patch is **not included in this Phase 2.3r source snapshot**.
+
+## Repository guide
+
+- [Target architecture and limitations](docs/architecture.md) — original design targets, not all implemented features.
+- [Roadmap](docs/roadmap/README.md) and [Phase 2 status](docs/phase2-work-plan.md).
+- [Entity schema/refactoring](docs/entity-schema-refactor.md), [Catalog extraction](docs/catalog-extraction.md), [Inventory extraction](docs/inventory-extraction.md), and [Ordering extraction](docs/ordering-extraction.md).
+- [Architecture decisions](docs/adr/0001-modular-monolith-first.md) and other `docs/adr/` records.
+- Root-level `README-STEP*.md` documents are **historical change/application guides**. Their statements such as “pending validation” or “next step” describe the repository *at the time that patch was authored*, not the current state.
+
+The project intentionally exercises the limits of distributed guarantees and records what was verified; it does not claim exactly-once RabbitMQ transport delivery, zero-failure availability, or measured production-scale throughput.

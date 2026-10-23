@@ -7,3 +7,9 @@
 *.suo
 TestResults/
 artifacts/
+
+# Never commit local database dumps or development diagnostics.
+backups/
+*.dump
+*.backup
+*.sql.gz
